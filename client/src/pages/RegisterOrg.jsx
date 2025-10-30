@@ -1,9 +1,8 @@
-// src/pages/RegisterOrg.jsx
-
 import React, { useState } from 'react';
 import { Briefcase, Key } from 'lucide-react';
 import { apiFetch } from '../utils/api';
-import { Card, Input, Button } from '../App'; // Assuming App exports UI components
+// Assuming App.jsx exports Card, Input, and Button for UI consistency
+import { Card, Input, Button } from '../App'; 
 
 const roles = ["admin", "manager", "trainer", "trainee"];
 
@@ -24,9 +23,9 @@ const OrgCreateView = ({ navigate }) => {
         setMessage('');
         try {
             const org = await apiFetch('/orgs', 'POST', formData);
-            // Note: The backend's org response is OrganizationOut, but the admin user is created.
             setMessage(`Organization "${org.name}" created successfully! Admin user registered. Please log in.`);
-            navigate('login');
+            // Automatically navigate to login page after success
+            setTimeout(() => navigate('login'), 2000); 
         } catch (error) {
             setMessage(`Error: ${error.message}`);
         } finally {
@@ -39,7 +38,7 @@ const OrgCreateView = ({ navigate }) => {
             <form onSubmit={handleSubmit} className="space-y-4">
                 <Input name="name" type="text" label="Organization Name" value={formData.name} onChange={handleChange} required />
                 <Input name="admin_email" type="email" label="Admin Email" value={formData.admin_email} onChange={handleChange} required />
-                <Input name="admin_password" type="password" label="Admin Password" value={formData.admin_password} onChange={handleChange} required />
+                <Input name="admin_password" type="password" label="Admin Password (min 8 chars)" value={formData.admin_password} onChange={handleChange} required />
                 <Button type="submit" loading={loading}>
                     {loading ? 'Creating...' : 'Register Organization'}
                 </Button>
@@ -65,7 +64,6 @@ const RegisterView = ({ navigate }) => {
         setLoading(true);
         setMessage('');
         try {
-            // Note: Token and password are sent as JSON, the response is a JWT token
             const result = await apiFetch('/auth/register', 'POST', formData);
             setMessage('Registration complete! Logging you in...');
             navigate('dashboard', result);
@@ -81,7 +79,7 @@ const RegisterView = ({ navigate }) => {
             <p className="text-sm text-gray-500 mb-4">Enter the invite token and set your password.</p>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <Input name="token" type="text" label="Invite Token" value={formData.token} onChange={handleChange} required />
-                <Input name="password" type="password" label="New Password" value={formData.password} onChange={handleChange} required />
+                <Input name="password" type="password" label="New Password (min 8 chars)" value={formData.password} onChange={handleChange} required />
                 <Button type="submit" loading={loading}>
                     {loading ? 'Registering...' : 'Set Password & Login'}
                 </Button>
@@ -91,4 +89,4 @@ const RegisterView = ({ navigate }) => {
     );
 };
 
-export { OrgCreateView, RegisterView, roles }; // Export views and roles
+export { OrgCreateView, RegisterView, roles };

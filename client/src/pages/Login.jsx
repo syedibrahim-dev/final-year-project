@@ -1,9 +1,8 @@
-// src/pages/Login.jsx
-
 import React, { useState } from 'react';
 import { LogIn } from 'lucide-react';
 import { apiFetch } from '../utils/api';
-import { Card, Input, Button } from '../App'; // Assuming App exports UI components
+// Assuming App.jsx exports Card, Input, and Button for UI consistency
+import { Card, Input, Button } from '../App'; 
 
 const LoginView = ({ navigate }) => {
     const [formData, setFormData] = useState({ username: '', password: '' });
@@ -20,7 +19,6 @@ const LoginView = ({ navigate }) => {
         setLoading(true);
         setMessage('');
         try {
-            // Use the /auth/login path. apiFetch will handle the form-urlencoded conversion.
             const result = await apiFetch('/auth/login', 'POST', {
                 username: formData.username,
                 password: formData.password
