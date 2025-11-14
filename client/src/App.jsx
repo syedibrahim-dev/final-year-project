@@ -138,7 +138,8 @@ const InviteUserView = ({ user, token }) => {
         setLoading(true);
         setMessage('');
         try {
-            const response = await apiFetch(`/orgs/${user.organization_id}/invite`, 'POST', formData, token);
+            // FIX: Pass user.organization.id, not user.organization_id
+            const response = await apiFetch(`/orgs/${user.organization.id}/invite`, 'POST', formData, token);
             setMessage(`Success! User invited with role '${formData.role}'. Invite Token: ${response.access_token}`);
             setFormData({ email: '', role: 'trainee' }); // Reset form
         } catch (error) {
@@ -176,7 +177,6 @@ const InviteUserView = ({ user, token }) => {
 
 // 4. Protected Dashboard View (Protected Content)
 const DashboardView = ({ token, user, logout }) => {
-    // UPDATED: Added 'search' and 'manage' views
     const [view, setView] = useState('profile'); // profile, invite, upload, search, manage
 
     const DashboardMenu = () => (
@@ -214,16 +214,17 @@ const DashboardView = ({ token, user, logout }) => {
             case 'profile':
                 return <ProfileView user={user} />;
             case 'invite':
+                // FIX: Pass user object directly. InviteUserView will handle user.organization.id
                 return <InviteUserView user={user} token={token} />;
             case 'upload':
                 // FIX: Pass user.organization.id, not user.organization_id
                 return <ContentUploadView orgId={user.organization.id} token={token} user={user} />;
             // NEW: Render the new pages
             case 'search':
-                // FIX: Pass user.organization.id, not user.organization_id
+                // FIX: Pass user.organization.id
                 return <ContentRetrieverView orgId={user.organization.id} token={token} />;
             case 'manage':
-                // FIX: Pass user.organization.id, not user.organization_id
+                // FIX: Pass user.organization.id
                 return <ContentManagerView orgId={user.organization.id} token={token} />;
             default:
                 return <ProfileView user={user} />;
@@ -337,8 +338,9 @@ export default function App() {
             {renderView()}
 
             <footer className="mt-12 text-center text-gray-500 text-xs">
-                SalesForge AI - Copyright 2025
+                SalesForge AI - FYP 2026
             </footer>
         </div>
     );
 }
+
