@@ -1,20 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react';
-// Import icons
-import { Home, UserPlus, Upload, BookOpen, Search, Loader2 } from 'lucide-react';
-// Import API utility
+import React, { useState, useEffect } from 'react';
+import { Home, UserPlus, Upload, BookOpen, Search, Loader2, Brain } from 'lucide-react';
 import { apiFetch, auth as authApi } from './utils/api';
 
-// --- Page Imports (Matching your file structure) ---
+// Page Imports
 import LoginView from './pages/Login';
 import { OrgCreateView, RegisterView, roles } from './pages/RegisterOrg';
 import ContentUploadView from './pages/ContentUpload';
-// NEW IMPORTS for Module 2
 import ContentRetrieverView from './pages/ContentRetriever';
 import ContentManagerView from './pages/ContentManager';
+// MCQ Practice (Available to all users)
+import MCQPracticeView from './pages/MCQPractice';
 
-
-// --- UI Sub-Components (Exporting for other pages to use) ---
-
+// ===== UI Components =====
 export const Card = ({ title, icon, children }) => (
     <div className="max-w-md mx-auto p-6 md:p-8 bg-white rounded-xl shadow-2xl border border-gray-100">
         <div className="flex items-center space-x-3 mb-6 border-b pb-4">
@@ -79,8 +76,7 @@ export const Button = ({ children, onClick, type = 'button', loading = false, cl
     </button>
 );
 
-// --- Dashboard Sub-Components ---
-
+// ===== Dashboard Components =====
 const MenuItem = ({ onClick, active, icon, label }) => (
     <button
         onClick={onClick}
@@ -138,10 +134,9 @@ const InviteUserView = ({ user, token }) => {
         setLoading(true);
         setMessage('');
         try {
-            // FIX: Pass user.organization.id, not user.organization_id
             const response = await apiFetch(`/orgs/${user.organization.id}/invite`, 'POST', formData, token);
             setMessage(`Success! User invited with role '${formData.role}'. Invite Token: ${response.access_token}`);
-            setFormData({ email: '', role: 'trainee' }); // Reset form
+            setFormData({ email: '', role: 'trainee' });
         } catch (error) {
             setMessage(`Error: ${error.message}`);
         } finally {
@@ -174,17 +169,17 @@ const InviteUserView = ({ user, token }) => {
     );
 };
 
-
-// 4. Protected Dashboard View (Protected Content)
 const DashboardView = ({ token, user, logout }) => {
-    const [view, setView] = useState('profile'); // profile, invite, upload, search, manage
+    const [view, setView] = useState('profile');
 
     const DashboardMenu = () => (
         <nav className="flex flex-col space-y-2 p-4 bg-gray-50 rounded-lg border">
             <h3 className="text-xs font-semibold uppercase text-gray-500 mb-1">My Workspace</h3>
             <MenuItem onClick={() => setView('profile')} active={view === 'profile'} icon={<Home />} label="My Profile" />
             
-            {/* NEW: Search (Module 2) - Visible to all */}
+            <h3 className="text-xs font-semibold uppercase text-gray-500 mt-4 mb-1">Training</h3>
+            {/* MCQ Practice - Available to ALL users */}
+            <MenuItem onClick={() => setView('mcq')} active={view === 'mcq'} icon={<Brain />} label="MCQ Practice" />
             <MenuItem onClick={() => setView('search')} active={view === 'search'} icon={<Search />} label="Search Knowledge" />
             
             {/* Admin/Manager Tools */}
@@ -192,10 +187,7 @@ const DashboardView = ({ token, user, logout }) => {
                 <>
                     <h3 className="text-xs font-semibold uppercase text-gray-500 mt-4 mb-1">Admin Tools</h3>
                     <MenuItem onClick={() => setView('upload')} active={view === 'upload'} icon={<Upload />} label="Upload Content" />
-                    
-                    {/* NEW: Manage Content (Module 2 Admin UI) */}
                     <MenuItem onClick={() => setView('manage')} active={view === 'manage'} icon={<BookOpen />} label="Manage Content" />
-                    
                     <MenuItem onClick={() => setView('invite')} active={view === 'invite'} icon={<UserPlus />} label="Invite Team" />
                 </>
             )}
@@ -214,18 +206,15 @@ const DashboardView = ({ token, user, logout }) => {
             case 'profile':
                 return <ProfileView user={user} />;
             case 'invite':
-                // FIX: Pass user object directly. InviteUserView will handle user.organization.id
                 return <InviteUserView user={user} token={token} />;
             case 'upload':
-                // FIX: Pass user.organization.id, not user.organization_id
                 return <ContentUploadView orgId={user.organization.id} token={token} user={user} />;
-            // NEW: Render the new pages
             case 'search':
-                // FIX: Pass user.organization.id
                 return <ContentRetrieverView orgId={user.organization.id} token={token} />;
             case 'manage':
-                // FIX: Pass user.organization.id
                 return <ContentManagerView orgId={user.organization.id} token={token} />;
+            case 'mcq':
+                return <MCQPracticeView orgId={user.organization.id} token={token} />;
             default:
                 return <ProfileView user={user} />;
         }
@@ -245,14 +234,13 @@ const DashboardView = ({ token, user, logout }) => {
     );
 };
 
-// --- Main App Component ---
+// ===== Main App =====
 export default function App() {
     const [token, setToken] = useState(localStorage.getItem('sf_token'));
     const [user, setUser] = useState(null);
-    const [view, setView] = useState('login'); // 'login', 'register', 'org_create', 'dashboard'
-    const [loadingUser, setLoadingUser] = useState(true); // Loading state for user fetch
+    const [view, setView] = useState('login');
+    const [loadingUser, setLoadingUser] = useState(true);
 
-    // Navigation and state update handler
     const navigate = (newView, authResult = null) => {
         if (authResult && authResult.access_token) {
             setToken(authResult.access_token);
@@ -269,7 +257,6 @@ export default function App() {
         setView('login');
     };
 
-    // Effect to fetch user details on token change
     useEffect(() => {
         const fetchUser = async () => {
             if (token) {
@@ -280,7 +267,7 @@ export default function App() {
                     setView('dashboard');
                 } catch (error) {
                     console.error('Failed to fetch user:', error);
-                    logout(); // Log out if token is invalid
+                    logout();
                 } finally {
                     setLoadingUser(false);
                 }
@@ -293,10 +280,8 @@ export default function App() {
             }
         };
         fetchUser();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token]);
 
-    // Conditional Rendering of Views
     const renderView = () => {
         if (loadingUser) {
             return <div className="text-center p-24"><Loader2 className="animate-spin inline-block h-12 w-12 text-indigo-600" /></div>;
@@ -334,13 +319,11 @@ export default function App() {
                 </nav>
             </header>
             
-            {/* Main Content Area */}
             {renderView()}
 
             <footer className="mt-12 text-center text-gray-500 text-xs">
-                SalesForge AI - FYP 2026
+                SalesForge AI - FYP 2026 | AI Training with MCQ Generation
             </footer>
         </div>
     );
 }
-
