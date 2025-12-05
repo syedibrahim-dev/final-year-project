@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Home, UserPlus, Upload, BookOpen, Search, Loader2, Brain } from 'lucide-react';
+import { Home, UserPlus, Upload, BookOpen, Search, Loader2, Brain, BarChart2, FileText } from 'lucide-react';
 import { apiFetch, auth as authApi } from './utils/api';
 
 // Page Imports
@@ -8,8 +8,11 @@ import { OrgCreateView, RegisterView, roles } from './pages/RegisterOrg';
 import ContentUploadView from './pages/ContentUpload';
 import ContentRetrieverView from './pages/ContentRetriever';
 import ContentManagerView from './pages/ContentManager';
-// MCQ Practice (Available to all users)
-import MCQPracticeView from './pages/MCQPractice';
+
+// MCQ Features - Available to different user roles
+import MCQPracticeView from './pages/MCQPractice';  // Updated version for all users
+import MCQTestCreator from './pages/MCQTestCreator';  // Admin/Manager only
+import PerformanceDashboard from './pages/PerformanceDashboard';  // Admin/Manager only
 
 // ===== UI Components =====
 export const Card = ({ title, icon, children }) => (
@@ -179,15 +182,31 @@ const DashboardView = ({ token, user, logout }) => {
             
             <h3 className="text-xs font-semibold uppercase text-gray-500 mt-4 mb-1">Training</h3>
             {/* MCQ Practice - Available to ALL users */}
-            <MenuItem onClick={() => setView('mcq')} active={view === 'mcq'} icon={<Brain />} label="MCQ Practice" />
+            <MenuItem onClick={() => setView('mcq-practice')} active={view === 'mcq-practice'} icon={<Brain />} label="MCQ Practice" />
             <MenuItem onClick={() => setView('search')} active={view === 'search'} icon={<Search />} label="Search Knowledge" />
             
             {/* Admin/Manager Tools */}
             {(user.role === 'admin' || user.role === 'manager') && (
                 <>
-                    <h3 className="text-xs font-semibold uppercase text-gray-500 mt-4 mb-1">Admin Tools</h3>
+                    <h3 className="text-xs font-semibold uppercase text-gray-500 mt-4 mb-1">MCQ Management</h3>
+                    <MenuItem 
+                        onClick={() => setView('create-test')} 
+                        active={view === 'create-test'} 
+                        icon={<FileText />} 
+                        label="Create MCQ Test" 
+                    />
+                    <MenuItem 
+                        onClick={() => setView('performance')} 
+                        active={view === 'performance'} 
+                        icon={<BarChart2 />} 
+                        label="View Performance" 
+                    />
+                    
+                    <h3 className="text-xs font-semibold uppercase text-gray-500 mt-4 mb-1">Content Management</h3>
                     <MenuItem onClick={() => setView('upload')} active={view === 'upload'} icon={<Upload />} label="Upload Content" />
                     <MenuItem onClick={() => setView('manage')} active={view === 'manage'} icon={<BookOpen />} label="Manage Content" />
+                    
+                    <h3 className="text-xs font-semibold uppercase text-gray-500 mt-4 mb-1">User Management</h3>
                     <MenuItem onClick={() => setView('invite')} active={view === 'invite'} icon={<UserPlus />} label="Invite Team" />
                 </>
             )}
@@ -213,8 +232,15 @@ const DashboardView = ({ token, user, logout }) => {
                 return <ContentRetrieverView orgId={user.organization.id} token={token} />;
             case 'manage':
                 return <ContentManagerView orgId={user.organization.id} token={token} />;
-            case 'mcq':
+            
+            // MCQ Features
+            case 'mcq-practice':
                 return <MCQPracticeView orgId={user.organization.id} token={token} />;
+            case 'create-test':
+                return <MCQTestCreator orgId={user.organization.id} token={token} />;
+            case 'performance':
+                return <PerformanceDashboard orgId={user.organization.id} token={token} />;
+            
             default:
                 return <ProfileView user={user} />;
         }
@@ -322,7 +348,7 @@ export default function App() {
             {renderView()}
 
             <footer className="mt-12 text-center text-gray-500 text-xs">
-                SalesForge AI - FYP 2026 | AI Training with MCQ Generation
+                SalesForge AI - FYP 2026 | MCQ Performance Tracking System
             </footer>
         </div>
     );

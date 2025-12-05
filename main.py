@@ -30,10 +30,6 @@ LOCAL_LLM_MODEL = "llama3.1:8b-instruct-q4_K_M"
 # --- RAG Configuration ---
 CHROMA_PERSIST_DIR = "./chroma_data" 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-
-# --- LLM Configuration for MCQ Generation ---
-# OPTIMIZED: Using phi3:mini for 2-3x faster generation
-# Alternative options: "mistral", "mistral:7b-instruct-q4_K_M", "gemma2:2b"
 LOCAL_LLM_TEMPERATURE = 0.7
 LOCAL_LLM_BASE_URL = "http://localhost:11434"  # Default Ollama URL
 
@@ -100,6 +96,49 @@ class TrainingContent(Base):
     organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
     uploader = relationship("User") 
     organization = relationship("Organization", back_populates="training_content")
+
+# --- NEW: MCQ Performance Tracking Models ---
+class MCQTest(Base):
+    """Stores generated MCQ tests that can be assigned to trainees"""
+    __tablename__ = "mcq_tests"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    topic = Column(String(255), nullable=False)
+    difficulty = Column(String(50), nullable=False)
+    questions_json = Column(JSON, nullable=False)  # Store MCQ questions
+    created_by = Column(Integer, ForeignKey("users.id"))
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    is_active = Column(Boolean, default=True)
+    
+    creator = relationship("User", foreign_keys=[created_by])
+    attempts = relationship("MCQAttempt", back_populates="test")
+
+class MCQAttempt(Base):
+    """Tracks individual trainee attempts on MCQ tests"""
+    __tablename__ = "mcq_attempts"
+    id = Column(Integer, primary_key=True, index=True)
+    test_id = Column(Integer, ForeignKey("mcq_tests.id"), index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    
+    # Performance metrics
+    score = Column(Float, nullable=False)  # Percentage score (0-100)
+    correct_answers = Column(Integer, nullable=False)
+    total_questions = Column(Integer, nullable=False)
+    time_taken_seconds = Column(Integer, nullable=True)  # Time to complete
+    
+    # Detailed results
+    answers_json = Column(JSON, nullable=False)  # User's answers
+    
+    # Timestamps
+    started_at = Column(DateTime, default=datetime.now(timezone.utc))
+    completed_at = Column(DateTime, default=datetime.now(timezone.utc))
+    
+    # Relationships
+    test = relationship("MCQTest", back_populates="attempts")
+    user = relationship("User")
 
 # --- Pydantic Schemas ---
 class OrgCreate(BaseModel):
@@ -187,6 +226,64 @@ class MCQGenerationRequest(BaseModel):
 class MCQGenerationResponse(BaseModel):
     questions: List[MCQQuestion]
     context_sources: List[str]  # List of source files used
+
+# --- NEW: MCQ Test & Performance Schemas ---
+class MCQTestCreate(BaseModel):
+    title: str = Field(..., min_length=3, max_length=255)
+    description: Optional[str] = None
+    topic: str
+    difficulty: str
+    num_questions: int = Field(default=5, ge=1, le=20)
+
+class MCQTestOut(BaseModel):
+    id: int
+    title: str
+    description: Optional[str]
+    topic: str
+    difficulty: str
+    created_at: datetime
+    total_questions: int
+    is_active: bool
+    class Config:
+        from_attributes = True
+
+class MCQAnswer(BaseModel):
+    question_index: int
+    selected_option: int  # 0, 1, 2, or 3 (A, B, C, D)
+
+class MCQSubmission(BaseModel):
+    test_id: int
+    answers: List[MCQAnswer]
+    time_taken_seconds: Optional[int] = None
+
+class MCQAttemptResult(BaseModel):
+    attempt_id: int
+    score: float
+    correct_answers: int
+    total_questions: int
+    passed: bool
+    details: List[Dict[str, Any]]  # Question-by-question breakdown
+    class Config:
+        from_attributes = True
+
+class TraineePerformance(BaseModel):
+    user_id: int
+    email: str
+    role: str
+    test_title: str
+    score: float
+    correct_answers: int
+    total_questions: int
+    completed_at: datetime
+    time_taken_seconds: Optional[int]
+    class Config:
+        from_attributes = True
+
+class PerformanceLeaderboard(BaseModel):
+    test_id: int
+    test_title: str
+    total_attempts: int
+    results: List[TraineePerformance]
 
 # --- Security & Dependencies ---
 def verify_password(plain_password: str, hashed_password: str) -> bool: 
@@ -849,10 +946,331 @@ def generate_mcqs_endpoint(
         difficulty=request.difficulty.lower()
     )
 
+# --- NEW: MCQ Test Management Endpoints ---
+@app.post("/orgs/{org_id}/mcq/tests", response_model=MCQTestOut, status_code=201, summary="Create MCQ Test")
+def create_mcq_test(
+    org_id: int,
+    test_data: MCQTestCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(role_required(["admin", "manager"]))
+):
+    """
+    Create a new MCQ test by generating questions and saving them for trainees to attempt.
+    """
+    if current_user.organization_id != org_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this organization.")
+    
+    # Generate MCQs
+    mcq_response = generate_mcqs_with_rag(
+        org_id=org_id,
+        topic=test_data.topic,
+        num_questions=test_data.num_questions,
+        difficulty=test_data.difficulty.lower()
+    )
+    
+    # Convert to JSON-serializable format
+    questions_json = [
+        {
+            "question": q.question,
+            "options": [{"text": opt.text, "is_correct": opt.is_correct} for opt in q.options],
+            "explanation": q.explanation,
+            "difficulty": q.difficulty
+        }
+        for q in mcq_response.questions
+    ]
+    
+    # Create test in database
+    new_test = MCQTest(
+        title=test_data.title,
+        description=test_data.description,
+        topic=test_data.topic,
+        difficulty=test_data.difficulty.lower(),
+        questions_json=questions_json,
+        created_by=current_user.id,
+        organization_id=org_id
+    )
+    
+    db.add(new_test)
+    db.commit()
+    db.refresh(new_test)
+    
+    return MCQTestOut(
+        id=new_test.id,
+        title=new_test.title,
+        description=new_test.description,
+        topic=new_test.topic,
+        difficulty=new_test.difficulty,
+        created_at=new_test.created_at,
+        total_questions=len(questions_json),
+        is_active=new_test.is_active
+    )
+
+@app.get("/orgs/{org_id}/mcq/tests", response_model=List[MCQTestOut], summary="List MCQ Tests")
+def list_mcq_tests(
+    org_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(role_required(ROLES))
+):
+    """
+    List all active MCQ tests in the organization.
+    """
+    if current_user.organization_id != org_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this organization.")
+    
+    tests = db.query(MCQTest).filter(
+        MCQTest.organization_id == org_id,
+        MCQTest.is_active == True
+    ).order_by(MCQTest.created_at.desc()).all()
+    
+    return [
+        MCQTestOut(
+            id=t.id,
+            title=t.title,
+            description=t.description,
+            topic=t.topic,
+            difficulty=t.difficulty,
+            created_at=t.created_at,
+            total_questions=len(t.questions_json),
+            is_active=t.is_active
+        )
+        for t in tests
+    ]
+
+@app.get("/orgs/{org_id}/mcq/tests/{test_id}", summary="Get MCQ Test Details")
+def get_mcq_test(
+    org_id: int,
+    test_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(role_required(ROLES))
+):
+    """
+    Get a specific MCQ test with questions (without revealing correct answers to trainees).
+    """
+    if current_user.organization_id != org_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this organization.")
+    
+    test = db.query(MCQTest).filter(
+        MCQTest.id == test_id,
+        MCQTest.organization_id == org_id
+    ).first()
+    
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found.")
+    
+    # For trainees, hide correct answers
+    if current_user.role in ["trainee", "trainer"]:
+        questions = [
+            {
+                "question": q["question"],
+                "options": [{"text": opt["text"]} for opt in q["options"]],
+                "difficulty": q["difficulty"]
+            }
+            for q in test.questions_json
+        ]
+    else:
+        # Admins/managers can see full questions
+        questions = test.questions_json
+    
+    return {
+        "id": test.id,
+        "title": test.title,
+        "description": test.description,
+        "topic": test.topic,
+        "difficulty": test.difficulty,
+        "questions": questions,
+        "total_questions": len(test.questions_json)
+    }
+
+@app.post("/orgs/{org_id}/mcq/tests/{test_id}/submit", response_model=MCQAttemptResult, summary="Submit MCQ Test Attempt")
+def submit_mcq_attempt(
+    org_id: int,
+    test_id: int,
+    submission: MCQSubmission,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(role_required(ROLES))
+):
+    """
+    Submit answers for an MCQ test and get immediate results.
+    """
+    if current_user.organization_id != org_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this organization.")
+    
+    # Get test
+    test = db.query(MCQTest).filter(
+        MCQTest.id == test_id,
+        MCQTest.organization_id == org_id
+    ).first()
+    
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found.")
+    
+    # Grade the test
+    correct_count = 0
+    total_questions = len(test.questions_json)
+    details = []
+    
+    for answer in submission.answers:
+        if answer.question_index >= total_questions:
+            continue
+        
+        question = test.questions_json[answer.question_index]
+        correct_option_index = next(
+            (i for i, opt in enumerate(question["options"]) if opt["is_correct"]),
+            None
+        )
+        
+        is_correct = answer.selected_option == correct_option_index
+        if is_correct:
+            correct_count += 1
+        
+        details.append({
+            "question_index": answer.question_index,
+            "question": question["question"],
+            "selected_option": answer.selected_option,
+            "correct_option": correct_option_index,
+            "is_correct": is_correct,
+            "explanation": question.get("explanation", "")
+        })
+    
+    score = (correct_count / total_questions * 100) if total_questions > 0 else 0
+    
+    # Save attempt to database
+    attempt = MCQAttempt(
+        test_id=test_id,
+        user_id=current_user.id,
+        organization_id=org_id,
+        score=score,
+        correct_answers=correct_count,
+        total_questions=total_questions,
+        time_taken_seconds=submission.time_taken_seconds,
+        answers_json=[{"question_index": a.question_index, "selected_option": a.selected_option} for a in submission.answers]
+    )
+    
+    db.add(attempt)
+    db.commit()
+    db.refresh(attempt)
+    
+    return MCQAttemptResult(
+        attempt_id=attempt.id,
+        score=score,
+        correct_answers=correct_count,
+        total_questions=total_questions,
+        passed=score >= 70,  # 70% passing threshold
+        details=details
+    )
+
+@app.get("/orgs/{org_id}/mcq/tests/{test_id}/results", response_model=PerformanceLeaderboard, summary="View Test Results (Admin)")
+def get_test_results(
+    org_id: int,
+    test_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(role_required(["admin", "manager"]))
+):
+    """
+    Get all trainee results for a specific test, sorted by score (ascending order for lowest performers first).
+    """
+    if current_user.organization_id != org_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this organization.")
+    
+    # Get test
+    test = db.query(MCQTest).filter(
+        MCQTest.id == test_id,
+        MCQTest.organization_id == org_id
+    ).first()
+    
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found.")
+    
+    # Get all attempts with user info, ordered by score ascending (lowest first)
+    attempts = db.query(MCQAttempt, User).join(
+        User, MCQAttempt.user_id == User.id
+    ).filter(
+        MCQAttempt.test_id == test_id,
+        MCQAttempt.organization_id == org_id
+    ).order_by(MCQAttempt.score.asc()).all()  # Ascending = lowest scores first
+    
+    results = [
+        TraineePerformance(
+            user_id=user.id,
+            email=user.email,
+            role=user.role,
+            test_title=test.title,
+            score=attempt.score,
+            correct_answers=attempt.correct_answers,
+            total_questions=attempt.total_questions,
+            completed_at=attempt.completed_at,
+            time_taken_seconds=attempt.time_taken_seconds
+        )
+        for attempt, user in attempts
+    ]
+    
+    return PerformanceLeaderboard(
+        test_id=test.id,
+        test_title=test.title,
+        total_attempts=len(results),
+        results=results
+    )
+
+@app.get("/orgs/{org_id}/mcq/performance", response_model=List[TraineePerformance], summary="View All Trainee Performance (Admin)")
+def get_organization_performance(
+    org_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(role_required(["admin", "manager"]))
+):
+    """
+    Get performance overview of all trainees across all tests, sorted by average score (ascending).
+    """
+    if current_user.organization_id != org_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this organization.")
+    
+    # Get all attempts with user and test info
+    attempts = db.query(MCQAttempt, User, MCQTest).join(
+        User, MCQAttempt.user_id == User.id
+    ).join(
+        MCQTest, MCQAttempt.test_id == MCQTest.id
+    ).filter(
+        MCQAttempt.organization_id == org_id
+    ).order_by(MCQAttempt.score.asc()).all()
+    
+    results = [
+        TraineePerformance(
+            user_id=user.id,
+            email=user.email,
+            role=user.role,
+            test_title=test.title,
+            score=attempt.score,
+            correct_answers=attempt.correct_answers,
+            total_questions=attempt.total_questions,
+            completed_at=attempt.completed_at,
+            time_taken_seconds=attempt.time_taken_seconds
+        )
+        for attempt, user, test in attempts
+    ]
+    
+    return results
+
 # --- Startup Event & Root Endpoint ---
 @app.on_event("startup")
 def on_startup():
     print("Creating database tables...")
+    
+    # Check if we need to recreate MCQ tables
+    try:
+        from sqlalchemy import inspect
+        inspector = inspect(engine)
+        existing_tables = inspector.get_table_names()
+        
+        # If mcq_attempts exists but doesn't have test_id column, drop both tables
+        if 'mcq_attempts' in existing_tables:
+            columns = [col['name'] for col in inspector.get_columns('mcq_attempts')]
+            if 'test_id' not in columns:
+                print("⚠️  Detected old MCQ schema - recreating tables...")
+                MCQAttempt.__table__.drop(engine, checkfirst=True)
+                MCQTest.__table__.drop(engine, checkfirst=True)
+                print("✅ Old MCQ tables dropped")
+    except Exception as e:
+        print(f"⚠️  Warning during schema check: {e}")
+    
     create_db_tables()
     print("Database ready.")
     print(f"MCQ Generation using LLM: {LOCAL_LLM_MODEL}")
