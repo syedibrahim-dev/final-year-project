@@ -1,23 +1,34 @@
 import React, { useState } from 'react';
-import { Search, Link, BookOpen, Loader2 } from 'lucide-react';
+import { Search, Link, BookOpen, Loader2, AlertCircle } from 'lucide-react';
 import { content as contentApi } from '../utils/api'; 
-// NOTE: Assuming UI components are exported from App.jsx as per our previous setup
 import { Input, Button } from '../App'; 
 
 // Component to display a single search result chunk
-const ChunkResult = ({ chunk, source, page, score }) => (
+const ChunkResult = ({ chunk, source, page, score, index }) => (
     <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm hover:shadow-md transition duration-150">
-        <p className="text-sm text-gray-800 mb-2 font-medium">
-            "{chunk}"
+        <div className="flex items-start justify-between mb-2">
+            <span className="text-xs font-semibold text-gray-400">Result #{index + 1}</span>
+            {score && (
+                <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold text-xs">
+                    Score: {(score * 100).toFixed(1)}%
+                </span>
+            )}
+        </div>
+        
+        <p className="text-sm text-gray-800 mb-3 leading-relaxed">
+            {chunk}
         </p>
-        <div className="flex justify-between items-center text-xs text-gray-500 pt-2 border-t border-gray-100">
+        
+        <div className="flex justify-between items-center text-xs text-gray-500 pt-2 border-t border-gray-200">
             <span className="flex items-center space-x-1">
                 <Link size={12} className="text-indigo-500"/>
-                <span>Source: {source} (Page {page})</span>
+                <span className="font-medium">{source}</span>
             </span>
-            <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">
-                Relevance: {score ? score.toFixed(3) : 'N/A'}
-            </span>
+            {page && (
+                <span className="text-gray-400">
+                    Page {page}
+                </span>
+            )}
         </div>
     </div>
 );
@@ -27,14 +38,18 @@ function ContentRetrieverView({ orgId, token }) {
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [searched, setSearched] = useState(false); // Track if a search has been performed
+    const [searched, setSearched] = useState(false);
+    const [resultCount, setResultCount] = useState(5);
 
     const handleSearch = async (e) => {
         e.preventDefault();
+        
+        console.log('🔍 Starting search...', { query, orgId, resultCount });
+        
         setError('');
         setLoading(true);
         setResults([]);
-        setSearched(true); // Mark that a search was attempted
+        setSearched(true);
         
         if (!query.trim()) {
             setError("Please enter a search query.");
@@ -42,12 +57,70 @@ function ContentRetrieverView({ orgId, token }) {
             return;
         }
 
+        if (!orgId) {
+            setError("Organization ID is missing. Please log in again.");
+            setLoading(false);
+            return;
+        }
+
         try {
-            // Call the retriever API function
-            const retrievedData = await contentApi.retrieve(orgId, query.trim(), 4, token);
-            setResults(retrievedData);
+            console.log('📡 Calling retrieve API...');
+            
+            // ✅ FIXED: Handle different API response formats
+            const response = await contentApi.retrieve(orgId, query.trim(), resultCount, token);
+            
+            console.log('✅ API Response:', response);
+            
+            // ✅ FIXED: Handle both array and object responses
+            let processedResults = [];
+            
+            if (Array.isArray(response)) {
+                // Direct array of results
+                processedResults = response.map(item => ({
+                    chunk: item.content || item.chunk || item.text || '',
+                    source: item.source || item.metadata?.source_file || 'Unknown',
+                    page: item.page || item.metadata?.page || null,
+                    score: item.relevance_score || item.score || item.distance || null
+                }));
+            } else if (response.results && Array.isArray(response.results)) {
+                // Response with results array
+                processedResults = response.results.map(item => ({
+                    chunk: item.content || item.chunk || item.text || '',
+                    source: item.source || item.metadata?.source_file || 'Unknown',
+                    page: item.page || item.metadata?.page || null,
+                    score: item.relevance_score || item.score || item.distance || null
+                }));
+            } else if (response.chunks && Array.isArray(response.chunks)) {
+                // Response with chunks array
+                processedResults = response.chunks.map(item => ({
+                    chunk: item.content || item.chunk || item.text || '',
+                    source: item.source || item.metadata?.source_file || 'Unknown',
+                    page: item.page || item.metadata?.page || null,
+                    score: item.relevance_score || item.score || item.distance || null
+                }));
+            }
+            
+            console.log('📊 Processed results:', processedResults.length, 'items');
+            
+            if (processedResults.length === 0) {
+                setError('No relevant content found. Try rephrasing your query or uploading more content.');
+            }
+            
+            setResults(processedResults);
+            
         } catch (err) {
-            setError(err.message || 'Knowledge base retrieval failed.');
+            console.error('❌ Search error:', err);
+            
+            // ✅ IMPROVED: Better error messages
+            if (err.message.includes('404')) {
+                setError('No content found in knowledge base. Please upload training materials first.');
+            } else if (err.message.includes('401') || err.message.includes('403')) {
+                setError('Authentication error. Please log in again.');
+            } else if (err.message.includes('500')) {
+                setError('Server error. The knowledge base might not be initialized yet.');
+            } else {
+                setError(err.message || 'Failed to search knowledge base. Please try again.');
+            }
         } finally {
             setLoading(false);
         }
@@ -57,59 +130,126 @@ function ContentRetrieverView({ orgId, token }) {
         <>
             <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center space-x-3 border-b pb-3">
                 <BookOpen size={24} className="text-indigo-600"/> 
-                <span>Search Knowledge Base (Test Embeddings)</span>
+                <span>Search Knowledge Base</span>
             </h3>
+            
             <p className="mb-6 text-gray-600">
-                Ask a question about your sales playbook. If the embeddings worked, the AI will find the most relevant passages.
+                Ask questions about your training materials. The AI will find the most relevant passages from your uploaded content.
             </p>
 
             {/* Search Form */}
-            <form onSubmit={handleSearch} className="space-y-4 mb-8 max-w-lg">
+            <form onSubmit={handleSearch} className="space-y-4 mb-8 max-w-2xl">
                 <Input 
                     name="query" 
                     label="Your Question" 
                     type="text" 
-                    placeholder="E.g., What is our policy on competitor pricing?"
+                    placeholder="e.g., What is our policy on competitor pricing?"
                     value={query} 
                     onChange={(e) => setQuery(e.target.value)} 
                     required 
                 />
                 
-                <Button type="submit" loading={loading} className="w-full sm:w-auto">
-                    {loading ? (
-                        <><Loader2 size={16} className="animate-spin mr-2"/> Searching...</>
-                    ) : (
-                        <><Search size={16} className="mr-2"/> Search</>
-                    )}
-                </Button>
+                <div className="flex items-center gap-4">
+                    <div className="flex-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Number of Results
+                        </label>
+                        <select
+                            value={resultCount}
+                            onChange={(e) => setResultCount(Number(e.target.value))}
+                            className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:ring-indigo-500 focus:border-indigo-500"
+                        >
+                            <option value={3}>3 results</option>
+                            <option value={5}>5 results</option>
+                            <option value={10}>10 results</option>
+                            <option value={15}>15 results</option>
+                        </select>
+                    </div>
+                    
+                    <div className="flex-1 flex items-end">
+                        <Button type="submit" loading={loading} disabled={loading || !query.trim()}>
+                            {loading ? (
+                                <>
+                                    <Loader2 size={16} className="animate-spin mr-2"/> 
+                                    Searching...
+                                </>
+                            ) : (
+                                <>
+                                    <Search size={16} className="mr-2"/> 
+                                    Search
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                </div>
             </form>
             
-            {error && <p className="mt-4 p-3 bg-red-100 text-sm font-medium text-red-700 rounded-lg">{error}</p>}
+            {/* Error Display */}
+            {error && (
+                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start space-x-3">
+                    <AlertCircle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                        <p className="text-sm font-semibold text-red-800">Search Failed</p>
+                        <p className="text-sm text-red-700 mt-1">{error}</p>
+                    </div>
+                </div>
+            )}
             
             {/* Results Display */}
             <div className="mt-8">
-                <h4 className="text-xl font-semibold text-gray-800 mb-4">
-                    Relevant Passages
-                </h4>
-                
-                {!loading && results.length === 0 && searched && !error && (
-                    <p className="text-gray-500">No relevant passages found for your query.</p>
-                )}
-                 {!loading && !searched && (
-                    <p className="text-gray-500">Enter a query above to see results.</p>
-                )}
-                
-                <div className="space-y-4">
-                    {results.map((result, index) => (
-                        <ChunkResult 
-                            key={index} 
-                            chunk={result.chunk} 
-                            source={result.source} 
-                            page={result.page} 
-                            score={result.score}
-                        />
-                    ))}
+                <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-xl font-semibold text-gray-800">
+                        {results.length > 0 ? `Found ${results.length} Relevant Passage${results.length !== 1 ? 's' : ''}` : 'Search Results'}
+                    </h4>
+                    {searched && results.length > 0 && (
+                        <span className="text-sm text-gray-500">
+                            Query: "{query}"
+                        </span>
+                    )}
                 </div>
+                
+                {/* Loading State */}
+                {loading && (
+                    <div className="text-center py-12">
+                        <Loader2 className="animate-spin inline-block h-8 w-8 text-indigo-600 mb-3" />
+                        <p className="text-gray-600">Searching knowledge base...</p>
+                    </div>
+                )}
+                
+                {/* Empty State - Not Searched Yet */}
+                {!loading && !searched && (
+                    <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                        <Search size={48} className="text-gray-400 mx-auto mb-3" />
+                        <p className="text-gray-500">Enter a query above to search your knowledge base</p>
+                    </div>
+                )}
+                
+                {/* Empty State - No Results */}
+                {!loading && searched && results.length === 0 && !error && (
+                    <div className="text-center py-12 bg-yellow-50 rounded-lg border border-yellow-200">
+                        <AlertCircle size={48} className="text-yellow-600 mx-auto mb-3" />
+                        <p className="text-gray-700 font-medium">No relevant passages found</p>
+                        <p className="text-gray-600 text-sm mt-1">
+                            Try rephrasing your query or upload more training materials
+                        </p>
+                    </div>
+                )}
+                
+                {/* Results List */}
+                {!loading && results.length > 0 && (
+                    <div className="space-y-4">
+                        {results.map((result, index) => (
+                            <ChunkResult 
+                                key={index} 
+                                chunk={result.chunk} 
+                                source={result.source} 
+                                page={result.page} 
+                                score={result.score}
+                                index={index}
+                            />
+                        ))}
+                    </div>
+                )}
             </div>
         </>
     );

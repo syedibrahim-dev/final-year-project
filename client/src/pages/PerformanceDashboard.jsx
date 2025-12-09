@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BarChart2, TrendingDown, Users, Trophy, Clock, CheckCircle, XCircle, Award } from 'lucide-react';
 import * as d3 from 'd3';
-import { apiFetch } from '../utils/api';
+import { mcq as mcqApi } from '../utils/api';
 import { Button } from '../App';
 
 export default function PerformanceDashboard({ orgId, token }) {
@@ -30,11 +30,14 @@ export default function PerformanceDashboard({ orgId, token }) {
     const fetchTests = async () => {
         setLoading(true);
         try {
-            const data = await apiFetch(`/orgs/${orgId}/mcq/tests`, 'GET', null, token);
-            setTests(data);
-            if (data.length > 0) {
-                setSelectedTest(data[0].id);
-                fetchTestResults(data[0].id);
+            // ✅ FIXED: Extract tests array from response
+            const response = await mcqApi.listTests(orgId, token);
+            const testsList = response.tests || [];
+            
+            setTests(testsList);
+            if (testsList.length > 0) {
+                setSelectedTest(testsList[0].id);
+                fetchTestResults(testsList[0].id);
             }
         } catch (err) {
             setError(`Error loading tests: ${err.message}`);
@@ -47,10 +50,12 @@ export default function PerformanceDashboard({ orgId, token }) {
         setLoading(true);
         setError('');
         try {
-            const data = await apiFetch(`/orgs/${orgId}/mcq/tests/${testId}/results`, 'GET', null, token);
-            setResults(data.results || []);
+            // ✅ FIXED: API returns array directly
+            const data = await mcqApi.listAttempts(orgId, testId, token);
+            setResults(Array.isArray(data) ? data : []);
         } catch (err) {
             setError(`Error loading results: ${err.message}`);
+            setResults([]);
         } finally {
             setLoading(false);
         }
@@ -63,16 +68,14 @@ export default function PerformanceDashboard({ orgId, token }) {
 
     const createScoreDistributionChart = () => {
         const container = scoreDistributionRef.current;
-        if (!container) return;
+        if (!container || results.length === 0) return;
 
-        // Clear existing chart
         d3.select(container).selectAll("*").remove();
 
         const margin = { top: 20, right: 30, bottom: 40, left: 50 };
         const width = container.offsetWidth - margin.left - margin.right;
         const height = 300 - margin.top - margin.bottom;
 
-        // Create score ranges
         const ranges = [
             { range: '0-20', min: 0, max: 20, color: '#ef4444' },
             { range: '20-40', min: 20, max: 40, color: '#f97316' },
@@ -103,7 +106,6 @@ export default function PerformanceDashboard({ orgId, token }) {
             .nice()
             .range([height, 0]);
 
-        // Add bars with animation
         svg.selectAll(".bar")
             .data(distribution)
             .enter()
@@ -121,7 +123,6 @@ export default function PerformanceDashboard({ orgId, token }) {
             .attr("y", d => y(d.count))
             .attr("height", d => height - y(d.count));
 
-        // Add value labels on top of bars
         svg.selectAll(".label")
             .data(distribution)
             .enter()
@@ -140,27 +141,19 @@ export default function PerformanceDashboard({ orgId, token }) {
             .delay((d, i) => i * 100 + 400)
             .style("opacity", 1);
 
-        // Add X axis
         svg.append("g")
             .attr("transform", `translate(0,${height})`)
-            .call(d3.axisBottom(x))
-            .selectAll("text")
-            .attr("font-size", "11px");
+            .call(d3.axisBottom(x));
 
-        // Add Y axis
         svg.append("g")
-            .call(d3.axisLeft(y).ticks(5))
-            .selectAll("text")
-            .attr("font-size", "11px");
+            .call(d3.axisLeft(y).ticks(5));
 
-        // Add title
         svg.append("text")
             .attr("x", width / 2)
             .attr("y", -5)
             .attr("text-anchor", "middle")
             .attr("font-size", "14px")
             .attr("font-weight", "bold")
-            .attr("fill", "#111827")
             .text("Score Distribution");
     };
 
@@ -193,19 +186,11 @@ export default function PerformanceDashboard({ orgId, token }) {
             .domain([0, 100])
             .range([height, 0]);
 
-        // Add grid lines
-        svg.append("g")
-            .attr("class", "grid")
-            .attr("opacity", 0.1)
-            .call(d3.axisLeft(y).tickSize(-width).tickFormat(""));
-
-        // Create line
         const line = d3.line()
             .x((d, i) => x(i))
             .y(d => y(d.score))
             .curve(d3.curveMonotoneX);
 
-        // Add line path with animation
         const path = svg.append("path")
             .datum(sortedResults)
             .attr("fill", "none")
@@ -220,12 +205,10 @@ export default function PerformanceDashboard({ orgId, token }) {
             .duration(2000)
             .attr("stroke-dashoffset", 0);
 
-        // Add dots with animation
         svg.selectAll(".dot")
             .data(sortedResults)
             .enter()
             .append("circle")
-            .attr("class", "dot")
             .attr("cx", (d, i) => x(i))
             .attr("cy", d => y(d.score))
             .attr("r", 0)
@@ -237,26 +220,19 @@ export default function PerformanceDashboard({ orgId, token }) {
             .delay((d, i) => 2000 + i * 50)
             .attr("r", 5);
 
-        // Add axes
         svg.append("g")
             .attr("transform", `translate(0,${height})`)
-            .call(d3.axisBottom(x).tickFormat((d, i) => i + 1))
-            .selectAll("text")
-            .attr("font-size", "11px");
+            .call(d3.axisBottom(x).tickFormat((d, i) => i + 1));
 
         svg.append("g")
-            .call(d3.axisLeft(y).ticks(5))
-            .selectAll("text")
-            .attr("font-size", "11px");
+            .call(d3.axisLeft(y).ticks(5));
 
-        // Add title
         svg.append("text")
             .attr("x", width / 2)
             .attr("y", -5)
             .attr("text-anchor", "middle")
             .attr("font-size", "14px")
             .attr("font-weight", "bold")
-            .attr("fill", "#111827")
             .text("Performance Trend");
     };
 
@@ -273,10 +249,12 @@ export default function PerformanceDashboard({ orgId, token }) {
         const data = results
             .filter(r => r.time_taken_seconds)
             .map(r => ({
-                email: r.email.split('@')[0],
+                user: r.user_id,
                 time: r.time_taken_seconds / 60,
                 score: r.score
             }));
+
+        if (data.length === 0) return;
 
         const svg = d3.select(container)
             .append("svg")
@@ -286,7 +264,7 @@ export default function PerformanceDashboard({ orgId, token }) {
             .attr("transform", `translate(${margin.left},${margin.top})`);
 
         const x = d3.scaleBand()
-            .domain(data.map(d => d.email))
+            .domain(data.map((d, i) => `User ${i + 1}`))
             .range([0, width])
             .padding(0.3);
 
@@ -299,13 +277,11 @@ export default function PerformanceDashboard({ orgId, token }) {
             .domain([0, 50, 100])
             .range(["#ef4444", "#eab308", "#22c55e"]);
 
-        // Add bars
         svg.selectAll(".bar")
             .data(data)
             .enter()
             .append("rect")
-            .attr("class", "bar")
-            .attr("x", d => x(d.email))
+            .attr("x", (d, i) => x(`User ${i + 1}`))
             .attr("width", x.bandwidth())
             .attr("y", height)
             .attr("height", 0)
@@ -317,39 +293,31 @@ export default function PerformanceDashboard({ orgId, token }) {
             .attr("y", d => y(d.time))
             .attr("height", d => height - y(d.time));
 
-        // Add axes
         svg.append("g")
             .attr("transform", `translate(0,${height})`)
             .call(d3.axisBottom(x))
             .selectAll("text")
             .attr("transform", "rotate(-45)")
-            .style("text-anchor", "end")
-            .attr("font-size", "10px");
+            .style("text-anchor", "end");
 
         svg.append("g")
-            .call(d3.axisLeft(y).ticks(5))
-            .selectAll("text")
-            .attr("font-size", "11px");
+            .call(d3.axisLeft(y).ticks(5));
 
-        // Add Y axis label
         svg.append("text")
             .attr("transform", "rotate(-90)")
             .attr("y", -40)
             .attr("x", -height / 2)
             .attr("text-anchor", "middle")
             .attr("font-size", "12px")
-            .attr("fill", "#6b7280")
             .text("Time (minutes)");
 
-        // Add title
         svg.append("text")
             .attr("x", width / 2)
             .attr("y", -5)
             .attr("text-anchor", "middle")
             .attr("font-size", "14px")
             .attr("font-weight", "bold")
-            .attr("fill", "#111827")
-            .text("Time Analysis by Trainee");
+            .text("Time Analysis");
     };
 
     const getScoreColor = (score) => {
@@ -364,7 +332,6 @@ export default function PerformanceDashboard({ orgId, token }) {
         return { text: 'Needs Improvement', color: 'bg-red-500' };
     };
 
-    // Calculate statistics
     const stats = results.length > 0 ? {
         totalAttempts: results.length,
         averageScore: (results.reduce((sum, r) => sum + r.score, 0) / results.length).toFixed(1),
@@ -492,7 +459,6 @@ export default function PerformanceDashboard({ orgId, token }) {
                 <div className="text-center p-12 bg-gray-50 rounded-lg border">
                     <Trophy className="mx-auto h-12 w-12 text-gray-400 mb-3" />
                     <p className="text-gray-600">No attempts yet for this test.</p>
-                    <p className="text-sm text-gray-500 mt-2">Results will appear here once trainees complete the test.</p>
                 </div>
             ) : (
                 <div className="bg-white border rounded-lg overflow-hidden">
@@ -500,102 +466,54 @@ export default function PerformanceDashboard({ orgId, token }) {
                         <table className="min-w-full divide-y divide-gray-200">
                             <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Rank
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Trainee
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Role
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Score
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Correct/Total
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Time Taken
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Status
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Completed
-                                    </th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Correct/Total</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Completed</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {results.map((result, index) => {
-                                    const badge = getPerformanceBadge(result.score);
-                                    const timeTaken = result.time_taken_seconds 
-                                        ? `${Math.floor(result.time_taken_seconds / 60)}m ${result.time_taken_seconds % 60}s`
-                                        : 'N/A';
-                                    
-                                    return (
-                                        <tr key={result.user_id} className="hover:bg-gray-50">
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="flex items-center">
-                                                    {index === 0 && result.score < 70 && (
-                                                        <TrendingDown className="text-red-500 mr-2" size={18} />
-                                                    )}
-                                                    <span className="text-sm font-medium text-gray-900">
-                                                        #{index + 1}
+                                {results
+                                    .sort((a, b) => b.score - a.score)
+                                    .map((result, index) => {
+                                        const badge = getPerformanceBadge(result.score);
+                                        const timeTaken = result.time_taken_seconds 
+                                            ? `${Math.floor(result.time_taken_seconds / 60)}m ${result.time_taken_seconds % 60}s`
+                                            : 'N/A';
+                                        
+                                        return (
+                                            <tr key={result.id} className="hover:bg-gray-50">
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <span className="text-sm font-medium text-gray-900">#{index + 1}</span>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <span className={`px-3 py-1 rounded-full text-sm font-bold ${getScoreColor(result.score)}`}>
+                                                        {result.score.toFixed(1)}%
                                                     </span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm font-medium text-gray-900">
-                                                    {result.email}
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">
-                                                    {result.role}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <span className={`px-3 py-1 rounded-full text-sm font-bold ${getScoreColor(result.score)}`}>
-                                                    {result.score.toFixed(1)}%
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {result.correct_answers} / {result.total_questions}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                <div className="flex items-center">
-                                                    <Clock size={14} className="mr-1 text-gray-400" />
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                    {result.correct_answers} / {result.total_questions}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                    <Clock size={14} className="inline mr-1" />
                                                     {timeTaken}
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <span className={`px-2 py-1 text-xs font-medium rounded-full text-white ${badge.color}`}>
-                                                    {badge.text}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {new Date(result.completed_at).toLocaleDateString()}
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <span className={`px-2 py-1 text-xs font-medium rounded-full text-white ${badge.color}`}>
+                                                        {badge.text}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                    {new Date(result.completed_at).toLocaleString()}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                             </tbody>
                         </table>
                     </div>
-                </div>
-            )}
-
-            {/* Action Buttons */}
-            {results.length > 0 && (
-                <div className="flex justify-between items-center pt-4 border-t">
-                    <p className="text-sm text-gray-600">
-                        💡 <strong>Tip:</strong> Interactive charts show score distribution, performance trends, and time analysis.
-                    </p>
-                    <Button onClick={fetchTests} className="bg-indigo-600 hover:bg-indigo-700">
-                        <BarChart2 className="mr-2" size={16} />
-                        Refresh Data
-                    </Button>
                 </div>
             )}
         </div>

@@ -1,267 +1,271 @@
-import React, { useState } from 'react';
-import { FileText, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
-import { apiFetch } from '../utils/api';
-import { Button, Input } from '../App';
+import React, { useState, useEffect } from 'react';
+import { mcq as mcqApi, conceptMap as conceptMapApi } from '../utils/api';
+import { Sparkles, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Button } from '../App';
 
-export default function MCQTestCreator({ orgId, token }) {
-    const [formData, setFormData] = useState({
-        title: '',
-        description: '',
-        topic: '',
-        difficulty: 'medium',
-        num_questions: 5
-    });
-    const [creating, setCreating] = useState(false);
-    const [message, setMessage] = useState('');
-    const [createdTest, setCreatedTest] = useState(null);
+export default function MCQGenerator({ orgId, token }) {
+    const [topic, setTopic] = useState('');
+    const [numQuestions, setNumQuestions] = useState(5);
+    const [difficulty, setDifficulty] = useState('medium');
+    const [conceptId, setConceptId] = useState(''); // ✅ NEW
+    const [stage, setStage] = useState(''); // ✅ NEW
+    const [concepts, setConcepts] = useState([]); // ✅ NEW
+    const [stages, setStages] = useState([]); // ✅ NEW
+    const [generating, setGenerating] = useState(false);
+    const [questions, setQuestions] = useState([]);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
 
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: name === 'num_questions' ? parseInt(value) : value
-        }));
+    // ✅ Fetch concepts on mount
+    useEffect(() => {
+        fetchConcepts();
+    }, [orgId, token]);
+
+    const fetchConcepts = async () => {
+        try {
+            const allConcepts = await conceptMapApi.listConcepts(orgId, null, token);
+            setConcepts(allConcepts);
+            
+            // Extract sales stages
+            const stageNodes = allConcepts.filter(c => c.node_type === 'sales_stage');
+            setStages(stageNodes);
+        } catch (err) {
+            console.error('Failed to fetch concepts:', err);
+        }
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setCreating(true);
-        setMessage('');
-        setCreatedTest(null);
+    const handleGenerate = async () => {
+        if (!topic.trim()) {
+            setError('Please enter a topic');
+            return;
+        }
+
+        setGenerating(true);
+        setError('');
+        setSuccess('');
+        setQuestions([]);
 
         try {
-            const response = await apiFetch(
-                `/orgs/${orgId}/mcq/tests`,
-                'POST',
-                formData,
-                token
-            );
+            const result = await mcqApi.generate(orgId, {
+                topic,
+                num_questions: numQuestions,
+                difficulty,
+                concept_id: conceptId || undefined, // ✅ NEW
+                stage: stage || undefined // ✅ NEW
+            }, token);
 
-            setCreatedTest(response);
-            setMessage(`Success! Created test "${response.title}" with ${response.total_questions} questions.`);
-            
-            // Reset form
-            setFormData({
-                title: '',
-                description: '',
-                topic: '',
-                difficulty: 'medium',
-                num_questions: 5
-            });
+            setQuestions(result.questions);
+            setSuccess(`Generated ${result.questions.length} high-quality questions!`);
         } catch (err) {
-            setMessage(`Error: ${err.message}`);
+            setError(err.message || 'Failed to generate MCQs');
         } finally {
-            setCreating(false);
+            setGenerating(false);
+        }
+    };
+
+    const handleCreateTest = async () => {
+        if (questions.length === 0) {
+            setError('Generate questions first');
+            return;
+        }
+
+        try {
+            await mcqApi.createTest(orgId, {
+                title: `${topic} - ${difficulty}`,
+                description: `MCQ test on ${topic}`,
+                topic,
+                difficulty,
+                num_questions: questions.length,
+                concept_id: conceptId || undefined,
+                stage: stage || undefined
+            }, token);
+
+            setSuccess('Test created successfully!');
+            setQuestions([]);
+            setTopic('');
+        } catch (err) {
+            setError(err.message || 'Failed to create test');
         }
     };
 
     return (
         <div className="space-y-6">
-            {/* Header */}
             <div className="border-b pb-4">
                 <h3 className="text-2xl font-bold text-gray-800 flex items-center">
-                    <FileText className="mr-2 text-indigo-600" size={28} />
-                    Create MCQ Test
+                    <Sparkles className="mr-2 text-indigo-600" size={28} />
+                    MCQ Generator (AI-Powered)
                 </h3>
                 <p className="text-sm text-gray-500 mt-1">
-                    Generate and save MCQ tests for trainees to attempt
+                    Generate scenario-based questions with concept map integration & quality evaluation
                 </p>
             </div>
 
-            {/* Info Box */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-start">
-                    <AlertCircle className="text-blue-600 mr-3 flex-shrink-0" size={20} />
-                    <div className="text-sm text-blue-800">
-                        <p className="font-semibold mb-1">How it works:</p>
-                        <ul className="list-disc list-inside space-y-1">
-                            <li>MCQs are generated from your uploaded training content</li>
-                            <li>Tests are saved and can be assigned to trainees</li>
-                            <li>Trainee performance is automatically tracked</li>
-                            <li>View results in the Performance Dashboard</li>
-                        </ul>
+            {/* Configuration Form */}
+            <div className="bg-white border rounded-lg p-6">
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Topic *
+                        </label>
+                        <input
+                            type="text"
+                            value={topic}
+                            onChange={(e) => setTopic(e.target.value)}
+                            placeholder="e.g., Handling budget objections"
+                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
                     </div>
-                </div>
-            </div>
 
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
-                {/* Test Title */}
-                <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Test Title *
-                    </label>
-                    <input
-                        type="text"
-                        name="title"
-                        value={formData.title}
-                        onChange={handleChange}
-                        placeholder="e.g., Week 1 Sales Fundamentals Assessment"
-                        required
-                        disabled={creating}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                </div>
+                    {/* ✅ NEW: Concept Selection */}
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Target Concept (Optional)
+                        </label>
+                        <select
+                            value={conceptId}
+                            onChange={(e) => setConceptId(e.target.value)}
+                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        >
+                            <option value="">All Concepts</option>
+                            {concepts.map(c => (
+                                <option key={c.node_id} value={c.node_id}>
+                                    {c.name} ({c.node_type})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
 
-                {/* Description */}
-                <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Description (Optional)
-                    </label>
-                    <textarea
-                        name="description"
-                        value={formData.description}
-                        onChange={handleChange}
-                        placeholder="Brief description of what this test covers..."
-                        rows="3"
-                        disabled={creating}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                </div>
+                    {/* ✅ NEW: Sales Stage Selection */}
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Sales Stage (Optional)
+                        </label>
+                        <select
+                            value={stage}
+                            onChange={(e) => setStage(e.target.value)}
+                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        >
+                            <option value="">All Stages</option>
+                            {stages.map(s => (
+                                <option key={s.node_id} value={s.node_id}>
+                                    {s.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
 
-                {/* Topic */}
-                <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Topic *
-                    </label>
-                    <input
-                        type="text"
-                        name="topic"
-                        value={formData.topic}
-                        onChange={handleChange}
-                        placeholder="e.g., sales objections, BANT qualification, closing techniques"
-                        required
-                        disabled={creating}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                        MCQs will be generated from training content related to this topic
-                    </p>
-                </div>
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Number of Questions
+                        </label>
+                        <input
+                            type="number"
+                            min="1"
+                            max="20"
+                            value={numQuestions}
+                            onChange={(e) => setNumQuestions(parseInt(e.target.value))}
+                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
+                    </div>
 
-                {/* Difficulty */}
-                <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Difficulty Level *
-                    </label>
-                    <div className="grid grid-cols-3 gap-3">
-                        {['easy', 'medium', 'hard'].map(level => (
-                            <button
-                                key={level}
-                                type="button"
-                                onClick={() => setFormData(prev => ({ ...prev, difficulty: level }))}
-                                disabled={creating}
-                                className={`p-3 rounded-lg border-2 font-medium transition-all ${
-                                    formData.difficulty === level
-                                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                                        : 'border-gray-200 text-gray-600 hover:border-indigo-300'
-                                } ${creating ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            >
-                                {level.charAt(0).toUpperCase() + level.slice(1)}
-                            </button>
-                        ))}
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Difficulty
+                        </label>
+                        <select
+                            value={difficulty}
+                            onChange={(e) => setDifficulty(e.target.value)}
+                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        >
+                            <option value="easy">Easy</option>
+                            <option value="medium">Medium</option>
+                            <option value="hard">Hard</option>
+                        </select>
                     </div>
                 </div>
 
-                {/* Number of Questions */}
-                <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Number of Questions *
-                    </label>
-                    <input
-                        type="number"
-                        name="num_questions"
-                        value={formData.num_questions}
-                        onChange={handleChange}
-                        min="3"
-                        max="20"
-                        required
-                        disabled={creating}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                        Recommended: 5-10 questions per test
-                    </p>
-                </div>
+                {error && (
+                    <div className="mt-4 flex items-center p-3 bg-red-50 border border-red-200 rounded-lg text-red-800">
+                        <AlertCircle size={20} className="mr-2" />
+                        {error}
+                    </div>
+                )}
 
-                {/* Submit Button */}
+                {success && (
+                    <div className="mt-4 flex items-center p-3 bg-green-50 border border-green-200 rounded-lg text-green-800">
+                        <CheckCircle size={20} className="mr-2" />
+                        {success}
+                    </div>
+                )}
+
                 <Button
-                    type="submit"
-                    loading={creating}
-                    className="w-full"
-                    disabled={!formData.title || !formData.topic}
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    loading={generating}
+                    className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700"
                 >
-                    {creating ? (
+                    {generating ? (
                         <>
                             <Loader2 className="animate-spin mr-2" size={18} />
-                            Creating Test... (30-60 seconds)
+                            Generating with AI...
                         </>
                     ) : (
                         <>
-                            <FileText className="mr-2" size={18} />
-                            Create MCQ Test
+                            <Sparkles className="mr-2" size={18} />
+                            Generate MCQs
                         </>
                     )}
                 </Button>
-            </form>
+            </div>
 
-            {/* Result Message */}
-            {message && (
-                <div className={`p-4 rounded-lg border ${
-                    message.startsWith('Success')
-                        ? 'bg-green-50 border-green-200'
-                        : 'bg-red-50 border-red-200'
-                }`}>
-                    <div className="flex items-start">
-                        {message.startsWith('Success') ? (
-                            <CheckCircle className="text-green-600 mr-3 flex-shrink-0" size={20} />
-                        ) : (
-                            <AlertCircle className="text-red-600 mr-3 flex-shrink-0" size={20} />
-                        )}
-                        <div className="flex-1">
-                            <p className={`font-semibold ${
-                                message.startsWith('Success') ? 'text-green-900' : 'text-red-900'
-                            }`}>
-                                {message.startsWith('Success') ? 'Test Created!' : 'Creation Failed'}
-                            </p>
-                            <p className={`text-sm mt-1 ${
-                                message.startsWith('Success') ? 'text-green-800' : 'text-red-800'
-                            }`}>
-                                {message}
-                            </p>
-                        </div>
+            {/* Generated Questions */}
+            {questions.length > 0 && (
+                <div className="bg-white border rounded-lg p-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <h4 className="text-lg font-semibold text-gray-800">
+                            Generated Questions ({questions.length})
+                        </h4>
+                        <Button
+                            onClick={handleCreateTest}
+                            className="bg-green-600 hover:bg-green-700"
+                        >
+                            Create Test
+                        </Button>
                     </div>
-                </div>
-            )}
 
-            {/* Created Test Info */}
-            {createdTest && (
-                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg p-6 border border-indigo-200">
-                    <h4 className="font-semibold text-indigo-900 mb-3 flex items-center">
-                        <CheckCircle className="mr-2 text-green-600" size={20} />
-                        Test Details
-                    </h4>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <span className="text-gray-600">Title:</span>
-                            <p className="font-medium text-gray-900">{createdTest.title}</p>
-                        </div>
-                        <div>
-                            <span className="text-gray-600">Topic:</span>
-                            <p className="font-medium text-gray-900">{createdTest.topic}</p>
-                        </div>
-                        <div>
-                            <span className="text-gray-600">Difficulty:</span>
-                            <p className="font-medium text-gray-900">{createdTest.difficulty}</p>
-                        </div>
-                        <div>
-                            <span className="text-gray-600">Questions:</span>
-                            <p className="font-medium text-gray-900">{createdTest.total_questions}</p>
-                        </div>
+                    <div className="space-y-6">
+                        {questions.map((q, idx) => (
+                            <div key={idx} className="p-4 border rounded-lg bg-gray-50">
+                                <p className="font-semibold text-gray-800 mb-3">
+                                    {idx + 1}. {q.question}
+                                </p>
+                                <div className="space-y-2">
+                                    {q.options.map((opt, optIdx) => (
+                                        <div
+                                            key={optIdx}
+                                            className={`p-3 rounded-lg ${
+                                                opt.is_correct
+                                                    ? 'bg-green-100 border-green-500 border-2'
+                                                    : 'bg-white border'
+                                            }`}
+                                        >
+                                            <p className="text-sm font-medium text-gray-800">
+                                                {String.fromCharCode(65 + optIdx)}. {opt.text}
+                                                {opt.is_correct && (
+                                                    <span className="ml-2 text-green-600 font-bold">✓ Correct</span>
+                                                )}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <p className="text-sm text-blue-900">
+                                        <strong>Explanation:</strong> {q.explanation}
+                                    </p>
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                    <p className="text-sm text-indigo-700 mt-4">
-                        ✅ Test is now available for trainees to attempt. View results in the Performance Dashboard.
-                    </p>
                 </div>
             )}
         </div>

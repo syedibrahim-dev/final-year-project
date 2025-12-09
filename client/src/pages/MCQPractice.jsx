@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Brain, CheckCircle, XCircle, RefreshCw, Loader2, Award, AlertCircle, Trophy } from 'lucide-react';
-import { apiFetch } from '../utils/api';
+import { mcq as mcqApi } from '../utils/api';
 import { Button } from '../App';
 
 export default function MCQPracticeView({ orgId, token }) {
@@ -23,11 +23,14 @@ export default function MCQPracticeView({ orgId, token }) {
         setLoading(true);
         setError('');
         try {
-            const data = await apiFetch(`/orgs/${orgId}/mcq/tests`, 'GET', null, token);
-            if (data.length === 0) {
+            // ✅ FIXED: API returns {tests: [...]}
+            const response = await mcqApi.listTests(orgId, token);
+            const testsList = response.tests || [];
+            
+            if (testsList.length === 0) {
                 setError('No MCQ tests available. Ask your admin to create some first.');
             } else {
-                setTests(data);
+                setTests(testsList);
             }
         } catch (err) {
             setError(`Error loading tests: ${err.message}`);
@@ -40,7 +43,15 @@ export default function MCQPracticeView({ orgId, token }) {
         setLoading(true);
         setError('');
         try {
-            const data = await apiFetch(`/orgs/${orgId}/mcq/tests/${testId}`, 'GET', null, token);
+            const data = await mcqApi.getTest(orgId, testId, token);
+            
+            // ✅ FIXED: Check if questions exist
+            if (!data.questions || data.questions.length === 0) {
+                setError('This test has no questions.');
+                setLoading(false);
+                return;
+            }
+            
             setTestDetails(data);
             setSelectedTest(testId);
             setCurrentIndex(0);
@@ -55,9 +66,9 @@ export default function MCQPracticeView({ orgId, token }) {
         }
     };
 
-    const handleAnswerSelect = (optionIndex) => {
+    const handleAnswerSelect = (answerLetter) => {
         const newAnswers = [...answers];
-        newAnswers[currentIndex] = optionIndex;
+        newAnswers[currentIndex] = answerLetter;
         setAnswers(newAnswers);
     };
 
@@ -83,23 +94,29 @@ export default function MCQPracticeView({ orgId, token }) {
         setLoading(true);
         try {
             const timeTaken = Math.floor((Date.now() - startTime) / 1000);
+            
+            // ✅ FIXED: Proper submission format
             const submission = {
                 test_id: selectedTest,
-                answers: answers.map((selected, index) => ({
-                    question_index: index,
-                    selected_option: selected !== null ? selected : 0
-                })),
+                answers: answers.map(a => a || 'A'), // Default null to 'A'
                 time_taken_seconds: timeTaken
             };
 
-            const result = await apiFetch(
-                `/orgs/${orgId}/mcq/tests/${selectedTest}/submit`,
-                'POST',
-                submission,
-                token
-            );
-
-            setFinalResult(result);
+            const result = await mcqApi.submitAttempt(orgId, submission, token);
+            
+            // ✅ FIXED: Build detailed results for review
+            const detailedResults = testDetails.questions.map((q, idx) => ({
+                question: q.question_text,
+                user_answer: answers[idx],
+                correct_answer: q.correct_answer,
+                is_correct: answers[idx] === q.correct_answer,
+                explanation: q.explanation
+            }));
+            
+            setFinalResult({
+                ...result,
+                answers_json: detailedResults
+            });
             setShowResult(true);
         } catch (err) {
             setError(`Error submitting test: ${err.message}`);
@@ -116,6 +133,7 @@ export default function MCQPracticeView({ orgId, token }) {
         setShowResult(false);
         setFinalResult(null);
         setStartTime(null);
+        setError('');
     };
 
     const getOptionLetter = (index) => {
@@ -181,7 +199,7 @@ export default function MCQPracticeView({ orgId, token }) {
                                         {test.difficulty}
                                     </span>
                                     <span className="text-gray-600">
-                                        {test.total_questions} questions
+                                        {test.questions_count || 0} questions
                                     </span>
                                 </div>
                                 
@@ -198,6 +216,8 @@ export default function MCQPracticeView({ orgId, token }) {
 
     // Final results view
     if (showResult && finalResult) {
+        const passed = finalResult.score >= 70;
+        
         return (
             <div className="space-y-6">
                 <div className="border-b pb-4">
@@ -208,25 +228,25 @@ export default function MCQPracticeView({ orgId, token }) {
                 </div>
 
                 <div className={`rounded-lg p-8 border-2 ${
-                    finalResult.passed 
+                    passed 
                         ? 'bg-green-50 border-green-300' 
                         : 'bg-red-50 border-red-300'
                 }`}>
                     <div className="text-center">
-                        {finalResult.passed ? (
+                        {passed ? (
                             <CheckCircle className="mx-auto text-green-600 mb-4" size={64} />
                         ) : (
                             <XCircle className="mx-auto text-red-600 mb-4" size={64} />
                         )}
                         
                         <h4 className={`text-3xl font-bold mb-2 ${
-                            finalResult.passed ? 'text-green-900' : 'text-red-900'
+                            passed ? 'text-green-900' : 'text-red-900'
                         }`}>
-                            {finalResult.passed ? 'Congratulations!' : 'Keep Practicing!'}
+                            {passed ? 'Congratulations!' : 'Keep Practicing!'}
                         </h4>
                         
                         <p className={`text-lg mb-6 ${
-                            finalResult.passed ? 'text-green-800' : 'text-red-800'
+                            passed ? 'text-green-800' : 'text-red-800'
                         }`}>
                             You scored {finalResult.score.toFixed(1)}%
                         </p>
@@ -259,7 +279,7 @@ export default function MCQPracticeView({ orgId, token }) {
                 <div className="bg-white border rounded-lg p-6">
                     <h4 className="font-semibold text-gray-900 mb-4">Review Your Answers</h4>
                     <div className="space-y-4">
-                        {finalResult.details.map((detail, idx) => (
+                        {finalResult.answers_json?.map((detail, idx) => (
                             <div
                                 key={idx}
                                 className={`p-4 rounded-lg border-2 ${
@@ -282,10 +302,10 @@ export default function MCQPracticeView({ orgId, token }) {
                                 {!detail.is_correct && (
                                     <div className="text-sm mt-2">
                                         <p className="text-red-800">
-                                            Your answer: {getOptionLetter(detail.selected_option)}
+                                            Your answer: {detail.user_answer}
                                         </p>
                                         <p className="text-green-800">
-                                            Correct answer: {getOptionLetter(detail.correct_option)}
+                                            Correct answer: {detail.correct_answer}
                                         </p>
                                     </div>
                                 )}
@@ -357,7 +377,7 @@ export default function MCQPracticeView({ orgId, token }) {
                         </span>
                     </div>
                     <h4 className="text-lg font-semibold text-gray-800 leading-relaxed">
-                        {currentQuestion.question}
+                        {currentQuestion.question_text}
                     </h4>
                 </div>
 
@@ -365,12 +385,12 @@ export default function MCQPracticeView({ orgId, token }) {
                 <div className="space-y-3 mb-6">
                     {currentQuestion.options.map((option, index) => {
                         const letter = getOptionLetter(index);
-                        const isSelected = answers[currentIndex] === index;
+                        const isSelected = answers[currentIndex] === letter;
 
                         return (
                             <button
                                 key={index}
-                                onClick={() => handleAnswerSelect(index)}
+                                onClick={() => handleAnswerSelect(letter)}
                                 className={`w-full text-left p-4 border-2 rounded-lg transition-all ${
                                     isSelected
                                         ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
@@ -379,7 +399,7 @@ export default function MCQPracticeView({ orgId, token }) {
                             >
                                 <div className="flex items-center">
                                     <span className="font-medium">
-                                        <strong>{letter})</strong> {option.text}
+                                        <strong>{letter})</strong> {option.option_text}
                                     </span>
                                 </div>
                             </button>

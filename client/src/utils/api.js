@@ -1,29 +1,18 @@
-const API_BASE_URL = 'http://localhost:8000'; // FastAPI backend URL
+const API_BASE_URL = 'http://localhost:8000';
 
-/**
- * Main API fetch helper.
- * Handles JSON, FormData, and URL-encoded login requests.
- */
 export const apiFetch = async (endpoint, method = 'POST', body = null, token = null) => {
     const headers = {};
     let finalBody = body;
     let fetchUrl = `${API_BASE_URL}${endpoint}`;
 
-    // --- Special Handling for Login (x-www-form-urlencoded) ---
     if (endpoint === '/auth/login') {
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
         const formBody = new URLSearchParams();
         formBody.append('username', body.username);
         formBody.append('password', body.password);
         finalBody = formBody.toString();
-    
-    // --- Handling for FormData (File Uploads) ---
     } else if (body instanceof FormData) {
-        // Let the browser set the Content-Type header automatically
-        // It will include the correct 'boundary' for multipart
         finalBody = body;
-    
-    // --- Default Handling for JSON ---
     } else if (body) {
         headers['Content-Type'] = 'application/json';
         finalBody = JSON.stringify(body);
@@ -32,90 +21,128 @@ export const apiFetch = async (endpoint, method = 'POST', body = null, token = n
     if (token) {
         headers['Authorization'] = `Bearer ${token}`;
     }
-    
+
+    const options = { method, headers };
+    if (finalBody && method !== 'GET') {
+        options.body = finalBody;
+    }
+
     try {
-        const response = await fetch(fetchUrl, {
-            method,
-            headers,
-            body: finalBody,
-        });
-
-        // Handle 204 No Content (e.g., DELETE success)
-        if (response.status === 204) {
-            return { message: 'Success' }; // Return a success object
-        }
-
-        const data = await response.json();
-
+        const response = await fetch(fetchUrl, options);
         if (!response.ok) {
-            let errorMessage = data.detail || 'An unknown server error occurred.';
-            // Format FastAPI 422 validation errors
-            if (Array.isArray(data.detail)) {
-                errorMessage = data.detail.map(err => {
-                    const loc = err.loc[err.loc.length - 1]; // Get the field name
-                    return `${loc}: ${err.msg}`;
-                }).join(', ');
-            }
-            throw new Error(errorMessage);
+            const errorData = await response.json().catch(() => ({ detail: 'Request failed' }));
+            throw new Error(errorData.detail || `HTTP ${response.status}`);
         }
-        
-        return data;
-
+        return await response.json();
     } catch (error) {
-        // Handle network errors or if response isn't JSON
         console.error("API Fetch Error:", error);
         throw new Error(error.message || 'A network error occurred.');
     }
 };
 
-// --- Authentication Endpoints ---
+// ========== AUTH APIs ==========
 export const auth = {
-    // FIX: Simplified to just pass credentials to apiFetch
     login: (username, password) => 
         apiFetch('/auth/login', 'POST', { username, password }),
-
+    
     register: (token, password) => 
         apiFetch('/auth/register', 'POST', { token, password }),
-
+    
     getMe: (token) => 
         apiFetch('/users/me', 'GET', null, token),
-
+    
     createOrg: (orgData) => 
-        apiFetch('/orgs', 'POST', orgData),
+        apiFetch('/orgs/register', 'POST', orgData),
 };
 
-// --- Content and RAG Endpoints ---
+// ========== ORGANIZATION APIs ==========
+export const organization = {
+    get: (orgId, token) => 
+        apiFetch(`/orgs/${orgId}`, 'GET', null, token),
+    
+    inviteUser: (orgId, inviteData, token) => 
+        apiFetch(`/orgs/${orgId}/users/invite`, 'POST', inviteData, token),
+    
+    listUsers: (orgId, token) => 
+        apiFetch(`/orgs/${orgId}/users/`, 'GET', null, token),
+    
+    updateUserRole: (orgId, userId, newRole, token) => 
+        apiFetch(`/orgs/${orgId}/users/${userId}/role`, 'PATCH', { new_role: newRole }, token),
+    
+    removeUser: (orgId, userId, token) => 
+        apiFetch(`/orgs/${orgId}/users/${userId}`, 'DELETE', null, token),
+};
+
+// ========== CONTENT APIs ==========
 export const content = {
-    /**
-     * Uploads a file and metadata. Now uses apiFetch.
-     */
-    upload: (orgId, metadata, file, token) => {
+    upload: (orgId, file, version, token) => {
         const formData = new FormData();
-        formData.append('product_name', metadata.product_name);
-        formData.append('version', metadata.version);
         formData.append('file', file);
+        formData.append('version', version);
         
-        // apiFetch will correctly handle FormData
+        console.log('📤 API Upload - FormData contents:');
+        for (let pair of formData.entries()) {
+            console.log(`   ${pair[0]}:`, pair[1]);
+        }
+        
         return apiFetch(`/orgs/${orgId}/content/upload`, 'POST', formData, token);
     },
 
-    /**
-     * Retrieves relevant chunks from the vector store.
-     */
-    retrieve: (orgId, query, k, token) => 
-        apiFetch(`/orgs/${orgId}/retriever?q=${encodeURIComponent(query)}&k=${k}`, 'GET', null, token),
-
-    /**
-     * NEW: Lists all uploaded documents for an org.
-     * FIX: Corrected variable name from org_id to orgId
-     */
     listContent: (orgId, token) =>
-        apiFetch(`/orgs/${orgId}/content`, 'GET', null, token),
+        apiFetch(`/orgs/${orgId}/content/`, 'GET', null, token),
 
-    /**
-     * NEW: Deletes a document (from SQL and Chroma).
-     * FIX: Corrected variable name from org_id to orgId
-     */
-    deleteContent: (orgId, contentId, token) =>
-        apiFetch(`/orgs/${orgId}/content/${contentId}`, 'DELETE', null, token),
+    retrieve: (orgId, query, k, token) => 
+        apiFetch(`/orgs/${orgId}/content/retrieve?query=${encodeURIComponent(query)}&k=${k}`, 'GET', null, token),
+
+    deleteContent: (orgId, contentId, token) => {
+        console.log('🗑️ API: Deleting content:', { orgId, contentId });
+        return apiFetch(`/orgs/${orgId}/content/${contentId}`, 'DELETE', null, token);
+    },
+};
+
+// ========== MCQ APIs (FIXED) ==========
+export const mcq = {
+    // ✅ FIXED: Removed /orgs/{orgId} prefix - backend uses /mcq directly
+    generate: (orgId, requestData, token) => {
+        const params = new URLSearchParams({
+            topic: requestData.topic,
+            difficulty: requestData.difficulty,
+            num_questions: requestData.num_questions
+        });
+        return apiFetch(`/mcq/generate?${params.toString()}`, 'POST', null, token);
+    },
+    
+    createTest: (orgId, testData, token) =>
+        apiFetch('/mcq/tests', 'POST', testData, token),
+    
+    listTests: (orgId, token) =>
+        apiFetch('/mcq/tests', 'GET', null, token),
+    
+    getTest: (orgId, testId, token) =>
+        apiFetch(`/mcq/tests/${testId}`, 'GET', null, token),
+    
+    // ✅ FIXED: Submit attempt
+    submitAttempt: (orgId, attemptData, token) => {
+        // Start attempt first to get attempt_id
+        return apiFetch(`/mcq/tests/${attemptData.test_id}/start`, 'POST', null, token)
+            .then(response => {
+                // Then submit answers
+                return apiFetch(
+                    `/mcq/attempts/${response.attempt_id}/submit`,
+                    'POST',
+                    { answers: attemptData.answers.map((ans, idx) => ({
+                        question_index: idx,
+                        selected_answer: ans
+                    }))},
+                    token
+                );
+            });
+    },
+    
+    // ✅ FIXED: List attempts for a test
+    listAttempts: (orgId, testId, token) =>
+        apiFetch(`/mcq/tests/${testId}/attempts`, 'GET', null, token),
+    
+    getAttempt: (orgId, attemptId, token) =>
+        apiFetch(`/mcq/attempts/${attemptId}`, 'GET', null, token),
 };
