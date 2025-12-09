@@ -4,15 +4,77 @@ from datetime import datetime, timedelta
 from jose import jwt
 
 from utils.database import get_db
-from utils.security import get_password_hash, get_current_user  # ✅ CHANGED: Import from utils.security
+from utils.security import get_password_hash, get_current_user
 from models.organization import Organization
 from models.user import User
 from schemas.organization import OrganizationCreate, OrganizationOut
-from config.settings import settings  # ✅ CHANGED: Import from config.settings
+from config.settings import settings
 
 router = APIRouter(prefix="/orgs", tags=["Organizations"])
 
 
+# ✅ NEW: Direct POST to /api/orgs (what your frontend calls)
+@router.post("", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
+def create_organization(
+    org_data: OrganizationCreate,
+    db: Session = Depends(get_db)
+):
+    """Create a new organization with admin user (direct endpoint)"""
+    
+    # Check if org name exists
+    existing_org = db.query(Organization).filter(
+        Organization.name == org_data.name
+    ).first()
+    
+    if existing_org:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Organization name already exists"
+        )
+    
+    # Check if admin email exists
+    existing_user = db.query(User).filter(
+        User.email == org_data.admin_email
+    ).first()
+    
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    try:
+        # Create organization
+        new_org = Organization(name=org_data.name)
+        db.add(new_org)
+        db.flush()
+        
+        # Create admin user
+        admin_user = User(
+            email=org_data.admin_email,
+            hashed_password=get_password_hash(org_data.admin_password),
+            role="admin",
+            organization_id=new_org.id,
+            is_active=True
+        )
+        db.add(admin_user)
+        db.commit()
+        db.refresh(new_org)
+        
+        print(f"✅ Organization '{new_org.name}' created with admin: {admin_user.email}")
+        
+        return new_org
+    
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error creating organization: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create organization: {str(e)}"
+        )
+
+
+# ✅ EXISTING: Alternative /register endpoint (kept for compatibility)
 @router.post("/register", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
 def register_organization(
     org_data: OrganizationCreate,
@@ -62,13 +124,13 @@ def register_organization(
     return new_org
 
 
-# ✅ INVITE ENDPOINT
+# ✅ EXISTING: Invite endpoint (unchanged)
 @router.post("/{org_id}/users/invite")
 def invite_user(
     org_id: int,
     email: str,
     role: str = "trainee",
-    current_user: User = Depends(get_current_user),  # ✅ Now works!
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Invite a new user to the organization"""

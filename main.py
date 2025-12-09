@@ -143,22 +143,31 @@ async def startup_event():
         print("📡 API Documentation: http://localhost:8000/docs")
         print("📡 Alternative Docs: http://localhost:8000/redoc")
         print("💚 Health Check: http://localhost:8000/health")
+        print("="*70)
+        
+        # Print all registered routes
+        print("\n🔌 REGISTERED API ENDPOINTS:")
+        print("="*70)
+        for route in app.routes:
+            if hasattr(route, 'methods') and hasattr(route, 'path'):
+                methods = ', '.join(route.methods)
+                print(f"   {methods:10} {route.path}")
         print("="*70 + "\n")
         
     except Exception as e:
         print(f"\n❌ STARTUP FAILED: {e}")
         traceback.print_exc()
         print("="*70 + "\n")
-        # Don't exit - let FastAPI handle it
 
 # Include routers that successfully imported
 print("\n" + "="*70)
 print("🔌 REGISTERING API ROUTES")
 print("="*70)
 
+# ✅ NO /api PREFIX - Keep existing behavior
 for route_name, route_module in routes_to_import:
     try:
-        app.include_router(route_module.router)
+        app.include_router(route_module.router)  # ✅ NO PREFIX
         print(f"✅ Registered: {route_name} routes")
     except Exception as e:
         print(f"❌ Failed to register {route_name} routes: {e}")
@@ -194,7 +203,6 @@ def health_check():
     try:
         from utils.database import get_db
         db = next(get_db())
-        # ✅ FIXED: Use text() for raw SQL in SQLAlchemy 2.0+
         result = db.execute(text("SELECT 1"))
         result.fetchone()
         health_status["database"] = "connected"
@@ -231,28 +239,12 @@ def api_info():
             "docs": "/docs",
             "redoc": "/redoc",
             "health": "/health",
-            "auth": "/auth",
-            "users": "/users",
-            "organizations": "/orgs",
-            "content": "/orgs/{org_id}/content",
-            "mcq": "/orgs/{org_id}/mcq"
+            "auth": "/auth/*",
+            "users": "/users/*",
+            "organizations": "/orgs/*",
+            "content": "/content/*",
+            "mcq": "/mcq/*"
         }
-    }
-
-# Exception handler
-@app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    """Global exception handler"""
-    print(f"\n❌ UNHANDLED EXCEPTION:")
-    print(f"   Path: {request.url.path}")
-    print(f"   Method: {request.method}")
-    print(f"   Error: {str(exc)}")
-    traceback.print_exc()
-    
-    return {
-        "error": "Internal server error",
-        "message": str(exc),
-        "path": str(request.url.path)
     }
 
 print("🎉 Application initialized successfully!")

@@ -9,6 +9,8 @@ node_modules/
 # Build output
 dist/
 build/
+chroma_data/
+chroma_db/
 
 # Logs
 npm-debug.log*
