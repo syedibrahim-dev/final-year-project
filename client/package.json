@@ -2,6 +2,7 @@
   "name": "salesforge-frontend",
   "version": "1.0.0",
   "description": "React frontend for SalesForge API",
+  "type": "module",
   "private": true,
   "scripts": {
     "dev": "vite",

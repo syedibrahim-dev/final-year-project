@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { 
-    Home, UserPlus, Upload, Loader2, Brain, 
-    BarChart2, FileText, FolderOpen, Search, LogOut, Sparkles, Zap
+import {
+    Home, UserPlus, Upload, Loader2, Brain,
+    BarChart2, FileText, FolderOpen, Search, LogOut, Sparkles, Zap, MessageCircle
 } from 'lucide-react';
 import { apiFetch, auth as authApi } from './utils/api';
 
@@ -17,9 +17,14 @@ import MCQPracticeView from './pages/MCQPractice';
 import MCQTestCreator from './pages/MCQTestCreator';
 import PerformanceDashboard from './pages/PerformanceDashboard';
 
+// Roleplay Features
+import RoleplayPersonas from './pages/RoleplayPersonas';
+import RoleplayChat from './pages/RoleplayChat';
+import RoleplayFeedback from './pages/RoleplayFeedback';
+
 // ===== UI Components ===== 
 export const Card = ({ title, icon, children, onClick, className = '' }) => (
-    <div 
+    <div
         onClick={onClick}
         className={`max-w-md mx-auto p-6 md:p-8 bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl border-2 border-cyan-100/50 hover:shadow-cyan-200/50 hover:shadow-3xl hover:border-cyan-200 transition-all duration-300 ${className}`}
     >
@@ -95,11 +100,10 @@ export const Button = ({ children, onClick, type = 'button', loading = false, di
 const MenuItem = ({ onClick, active, icon, label }) => (
     <button
         onClick={onClick}
-        className={`flex items-center space-x-3 w-full p-3.5 rounded-2xl transition-all duration-300 text-sm font-bold group ${
-            active 
-                ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-600 text-white shadow-lg shadow-cyan-500/30 transform scale-[1.03]' 
-                : 'text-slate-600 hover:bg-gradient-to-r hover:from-cyan-50 hover:via-blue-50 hover:to-indigo-50 hover:text-slate-900 hover:shadow-md'
-        }`}
+        className={`flex items-center space-x-3 w-full p-3.5 rounded-2xl transition-all duration-300 text-sm font-bold group ${active
+            ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-600 text-white shadow-lg shadow-cyan-500/30 transform scale-[1.03]'
+            : 'text-slate-600 hover:bg-gradient-to-r hover:from-cyan-50 hover:via-blue-50 hover:to-indigo-50 hover:text-slate-900 hover:shadow-md'
+            }`}
     >
         <div className={`${active ? 'text-white' : 'text-cyan-600 group-hover:text-blue-600'} transition-colors duration-200`}>
             {React.cloneElement(icon, { size: 20 })}
@@ -143,7 +147,7 @@ const ProfileView = ({ user }) => (
             </p>
             <p className="text-slate-500 text-sm mt-2 ml-16">Here's your profile information</p>
         </div>
-        
+
         <div className="space-y-2 bg-gradient-to-br from-white to-slate-50 p-7 rounded-3xl border-2 border-slate-100 shadow-xl">
             <DetailItem label="Email" value={user.email} color="blue" />
             <DetailItem label="Full Name" value={user.full_name || 'Not set'} color="slate" />
@@ -195,24 +199,24 @@ const InviteUserView = ({ user, token }) => {
                 </h3>
                 <p className="text-slate-600 font-medium ml-16">Send an invitation to join your organization</p>
             </div>
-            
+
             <form onSubmit={handleInvite} className="space-y-6 max-w-lg">
-                <Input 
-                    name="email" 
-                    type="email" 
-                    label="📧 User Email Address" 
-                    value={formData.email} 
-                    onChange={handleChange} 
-                    required 
+                <Input
+                    name="email"
+                    type="email"
+                    label="📧 User Email Address"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
                     placeholder="colleague@company.com"
                 />
-                <Select 
-                    name="role" 
-                    label="👔 Assign Role" 
-                    value={formData.role} 
-                    options={roles} 
-                    onChange={handleChange} 
-                    required 
+                <Select
+                    name="role"
+                    label="👔 Assign Role"
+                    value={formData.role}
+                    options={roles}
+                    onChange={handleChange}
+                    required
                 />
                 <Button type="submit" loading={loading}>
                     {loading ? (
@@ -228,13 +232,12 @@ const InviteUserView = ({ user, token }) => {
                     )}
                 </Button>
             </form>
-            
+
             {message && (
-                <div className={`mt-6 p-6 rounded-2xl text-sm break-all border-2 shadow-lg ${
-                    message.startsWith('Error') 
-                        ? 'bg-gradient-to-r from-rose-50 to-red-50 text-rose-700 border-rose-300 shadow-rose-200/50' 
-                        : 'bg-gradient-to-r from-emerald-50 to-green-50 text-emerald-700 border-emerald-300 shadow-emerald-200/50'
-                }`}>
+                <div className={`mt-6 p-6 rounded-2xl text-sm break-all border-2 shadow-lg ${message.startsWith('Error')
+                    ? 'bg-gradient-to-r from-rose-50 to-red-50 text-rose-700 border-rose-300 shadow-rose-200/50'
+                    : 'bg-gradient-to-r from-emerald-50 to-green-50 text-emerald-700 border-emerald-300 shadow-emerald-200/50'
+                    }`}>
                     <p className="font-black text-base mb-3 flex items-center">
                         {message.startsWith('Success') ? (
                             <>
@@ -257,6 +260,7 @@ const InviteUserView = ({ user, token }) => {
 
 const DashboardView = ({ token, user, logout }) => {
     const [view, setView] = useState('profile');
+    const [sessionData, setSessionData] = useState(null); // For roleplay session
 
     if (!user) {
         return (
@@ -279,7 +283,7 @@ const DashboardView = ({ token, user, logout }) => {
                 </h3>
             </div>
             <MenuItem onClick={() => setView('profile')} active={view === 'profile'} icon={<Home />} label="My Profile" />
-            
+
             <div className="pt-4 border-t-2 border-slate-200 mt-3">
                 <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-3 flex items-center">
                     <Brain size={14} className="mr-2 text-blue-500" />
@@ -287,8 +291,9 @@ const DashboardView = ({ token, user, logout }) => {
                 </h3>
             </div>
             <MenuItem onClick={() => setView('mcq-practice')} active={view === 'mcq-practice'} icon={<Brain />} label="MCQ Practice" />
+            <MenuItem onClick={() => setView('roleplay')} active={view === 'roleplay'} icon={<MessageCircle />} label="AI Roleplay" />
             <MenuItem onClick={() => setView('search')} active={view === 'search'} icon={<Search />} label="Search Knowledge" />
-            
+
             {(['admin', 'manager', 'trainer'].includes(user.role)) && (
                 <>
                     <div className="pt-4 border-t-2 border-slate-200 mt-3">
@@ -297,19 +302,19 @@ const DashboardView = ({ token, user, logout }) => {
                             MCQ Management
                         </h3>
                     </div>
-                    <MenuItem 
-                        onClick={() => setView('create-test')} 
-                        active={view === 'create-test'} 
-                        icon={<FileText />} 
-                        label="Create MCQ Test" 
+                    <MenuItem
+                        onClick={() => setView('create-test')}
+                        active={view === 'create-test'}
+                        icon={<FileText />}
+                        label="Create MCQ Test"
                     />
-                    <MenuItem 
-                        onClick={() => setView('performance')} 
-                        active={view === 'performance'} 
-                        icon={<BarChart2 />} 
-                        label="View Performance" 
+                    <MenuItem
+                        onClick={() => setView('performance')}
+                        active={view === 'performance'}
+                        icon={<BarChart2 />}
+                        label="View Performance"
                     />
-                    
+
                     <div className="pt-4 border-t-2 border-slate-200 mt-3">
                         <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-3 flex items-center">
                             <FolderOpen size={14} className="mr-2 text-blue-500" />
@@ -318,7 +323,7 @@ const DashboardView = ({ token, user, logout }) => {
                     </div>
                     <MenuItem onClick={() => setView('upload')} active={view === 'upload'} icon={<Upload />} label="Upload Content" />
                     <MenuItem onClick={() => setView('manage')} active={view === 'manage'} icon={<FolderOpen />} label="Manage Content" />
-                    
+
                     <div className="pt-4 border-t-2 border-slate-200 mt-3">
                         <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-3 flex items-center">
                             <UserPlus size={14} className="mr-2 text-cyan-500" />
@@ -328,7 +333,7 @@ const DashboardView = ({ token, user, logout }) => {
                     <MenuItem onClick={() => setView('invite')} active={view === 'invite'} icon={<UserPlus />} label="Invite Team" />
                 </>
             )}
-            
+
             <div className="pt-4 border-t-2 border-slate-200 mt-4">
                 <button
                     onClick={logout}
@@ -355,6 +360,29 @@ const DashboardView = ({ token, user, logout }) => {
                 return <ContentManagerView orgId={user.organization_id} token={token} />;
             case 'mcq-practice':
                 return <MCQPracticeView orgId={user.organization_id} token={token} />;
+            case 'roleplay':
+                return <RoleplayPersonas token={token} navigate={(newView, data) => {
+                    setSessionData(data);
+                    setView(newView);
+                }} />;
+            case 'roleplay-chat':
+                return <RoleplayChat
+                    sessionId={sessionData?.sessionId}
+                    token={token}
+                    onEnd={() => {
+                        // Go straight to feedback (no popup)
+                        setView('roleplay-feedback');
+                    }}
+                />;
+            case 'roleplay-feedback':
+                return <RoleplayFeedback
+                    sessionId={sessionData?.sessionId}
+                    token={token}
+                    onBack={() => {
+                        setView('roleplay');
+                        setSessionData(null);
+                    }}
+                />;
             case 'create-test':
                 return <MCQTestCreator orgId={user.organization_id} token={token} />;
             case 'performance':
@@ -387,7 +415,7 @@ export default function App() {
 
     const navigate = (newView, authResult = null) => {
         console.log('🧭 Navigate called:', { newView, authResult });
-        
+
         if (authResult && authResult.access_token) {
             console.log('💾 Setting token from login');
             setToken(authResult.access_token);
@@ -409,7 +437,7 @@ export default function App() {
     useEffect(() => {
         const fetchUser = async () => {
             console.log('🔍 Token changed, token exists:', !!token);
-            
+
             if (token) {
                 setLoadingUser(true);
                 try {
@@ -430,7 +458,7 @@ export default function App() {
                 setLoadingUser(false);
             }
         };
-        
+
         fetchUser();
     }, [token]);
 
@@ -464,7 +492,7 @@ export default function App() {
         if (view === 'dashboard') {
             return <DashboardView token={token} user={user} logout={logout} />;
         }
-        
+
         switch (view) {
             case 'org_create':
                 return <OrgCreateView navigate={navigate} />;
@@ -487,7 +515,7 @@ export default function App() {
                     {user && (
                         <p className="text-sm text-slate-600 mt-2 font-bold flex items-center">
                             <span className="w-2 h-2 bg-emerald-500 rounded-full mr-2 animate-pulse"></span>
-                            {user.email} 
+                            {user.email}
                             <span className="ml-2 px-2 py-0.5 bg-gradient-to-r from-cyan-100 to-blue-100 text-cyan-700 rounded-lg text-xs font-black">
                                 {user.role.toUpperCase()}
                             </span>
@@ -497,33 +525,30 @@ export default function App() {
                 <nav className="flex space-x-3">
                     {!token && (
                         <>
-                            <button 
-                                onClick={() => navigate('login')} 
-                                className={`px-6 py-3 rounded-2xl text-sm font-bold transition-all duration-200 ${
-                                    view === 'login' 
-                                        ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30' 
-                                        : 'text-slate-600 hover:bg-slate-100 border-2 border-transparent hover:border-slate-200'
-                                }`}
+                            <button
+                                onClick={() => navigate('login')}
+                                className={`px-6 py-3 rounded-2xl text-sm font-bold transition-all duration-200 ${view === 'login'
+                                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30'
+                                    : 'text-slate-600 hover:bg-slate-100 border-2 border-transparent hover:border-slate-200'
+                                    }`}
                             >
                                 Login
                             </button>
-                            <button 
-                                onClick={() => navigate('register')} 
-                                className={`px-6 py-3 rounded-2xl text-sm font-bold transition-all duration-200 ${
-                                    view === 'register' 
-                                        ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30' 
-                                        : 'text-slate-600 hover:bg-slate-100 border-2 border-transparent hover:border-slate-200'
-                                }`}
+                            <button
+                                onClick={() => navigate('register')}
+                                className={`px-6 py-3 rounded-2xl text-sm font-bold transition-all duration-200 ${view === 'register'
+                                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30'
+                                    : 'text-slate-600 hover:bg-slate-100 border-2 border-transparent hover:border-slate-200'
+                                    }`}
                             >
                                 Register
                             </button>
-                            <button 
-                                onClick={() => navigate('org_create')} 
-                                className={`px-6 py-3 rounded-2xl text-sm font-bold transition-all duration-200 ${
-                                    view === 'org_create' 
-                                        ? 'bg-gradient-to-r from-cyan-600 to-indigo-700 text-white shadow-lg shadow-cyan-500/40' 
-                                        : 'text-cyan-600 border-2 border-cyan-600 hover:bg-cyan-50'
-                                }`}
+                            <button
+                                onClick={() => navigate('org_create')}
+                                className={`px-6 py-3 rounded-2xl text-sm font-bold transition-all duration-200 ${view === 'org_create'
+                                    ? 'bg-gradient-to-r from-cyan-600 to-indigo-700 text-white shadow-lg shadow-cyan-500/40'
+                                    : 'text-cyan-600 border-2 border-cyan-600 hover:bg-cyan-50'
+                                    }`}
                             >
                                 Create Org
                             </button>
@@ -531,7 +556,7 @@ export default function App() {
                     )}
                 </nav>
             </header>
-            
+
             {renderView()}
 
             <footer className="mt-16 text-center text-slate-500 pb-8">

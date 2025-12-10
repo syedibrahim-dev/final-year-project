@@ -88,6 +88,15 @@ except ImportError as e:
     print(f"❌ Failed to import mcq routes: {e}")
     traceback.print_exc()
 
+# Roleplay routes
+try:
+    from routes import roleplay
+    routes_to_import.append(("roleplay", roleplay))
+    print("✅ Roleplay routes imported")
+except ImportError as e:
+    print(f"❌ Failed to import roleplay routes: {e}")
+    traceback.print_exc()
+
 # Check if we have at least auth routes
 if not any(name == "auth" for name, _ in routes_to_import):
     print("\n❌ CRITICAL: Auth routes failed to import!")

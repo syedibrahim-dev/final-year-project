@@ -46,7 +46,8 @@ def create_db_tables():
         from models.user import User
         from models.organization import Organization
         from models.training_content import TrainingContent
-        from models.mcq import MCQTest, MCQQuestion, TestAttempt, QuestionResponse
+        from models.mcq import MCQTest, MCQAttempt
+        from models.roleplay import RoleplayPersona, RoleplaySession, RoleplayMessage, RoleplayEvaluation
         
         print("✅ Models imported successfully")
     except ImportError as e:

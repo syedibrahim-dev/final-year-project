@@ -17,7 +17,7 @@ class EmbeddingManager:
             self._embedding_function = HuggingFaceEmbeddings(
                 model_name=self.model_name,
                 model_kwargs={'device': 'cpu'},
-                encode_kwargs={'normalize_embeddings': True}
+                encode_kwargs={'normalize_embeddings': True, 'multi_process': False}
             )
             print(f"✅ Embedding model loaded successfully")
         return self._embedding_function

@@ -1,0 +1,92 @@
+[
+    {
+        "name": "The Budget Hunter",
+        "description": "A price-sensitive customer who constantly compares costs and seeks discounts. They are concerned about value for money and will challenge any pricing that seems high.",
+        "personality_traits": {
+            "patience": "medium",
+            "price_sensitivity": "very_high",
+            "decision_speed": "slow",
+            "trust_level": "medium"
+        },
+        "common_objections": [
+            "That's too expensive for what you're offering",
+            "Your competitor offers something similar at half the price",
+            "Can you give me a discount?",
+            "I need to think about whether it's worth the cost"
+        ],
+        "tone": "casual",
+        "difficulty": "beginner"
+    },
+    {
+        "name": "The Skeptic",
+        "description": "A highly analytical customer who distrusts sales pitches and requires concrete proof, data, and third-party validation before considering a purchase.",
+        "personality_traits": {
+            "patience": "low",
+            "price_sensitivity": "medium",
+            "decision_speed": "very_slow",
+            "trust_level": "very_low"
+        },
+        "common_objections": [
+            "How do I know this actually works?",
+            "Can you provide case studies or references?",
+            "I've heard mixed reviews about products like this",
+            "What's the catch? This sounds too good to be true"
+        ],
+        "tone": "formal",
+        "difficulty": "advanced"
+    },
+    {
+        "name": "The Busy Executive",
+        "description": "A time-constrained decision-maker who wants quick, concise answers and values efficiency. They have limited patience for long explanations.",
+        "personality_traits": {
+            "patience": "very_low",
+            "price_sensitivity": "low",
+            "decision_speed": "fast",
+            "trust_level": "medium"
+        },
+        "common_objections": [
+            "I don't have time for a lengthy demo",
+            "Can you summarize the key benefits in one sentence?",
+            "How quickly can we implement this?",
+            "I need to make a decision today, cut to the chase"
+        ],
+        "tone": "formal",
+        "difficulty": "intermediate"
+    },
+    {
+        "name": "The Detail Seeker",
+        "description": "A thorough customer who asks many technical and specific questions. They want to understand every feature, integration, and specification before committing.",
+        "personality_traits": {
+            "patience": "high",
+            "price_sensitivity": "medium",
+            "decision_speed": "slow",
+            "trust_level": "high"
+        },
+        "common_objections": [
+            "How does this integrate with our existing systems?",
+            "What are the technical specifications?",
+            "Can you explain how feature X works in detail?",
+            "What happens if we encounter edge case Y?"
+        ],
+        "tone": "formal",
+        "difficulty": "intermediate"
+    },
+    {
+        "name": "The Friendly Prospect",
+        "description": "An open-minded and pleasant customer who is genuinely interested but needs guidance through the sales process. They are easy to talk to but may lack urgency.",
+        "personality_traits": {
+            "patience": "high",
+            "price_sensitivity": "medium",
+            "decision_speed": "medium",
+            "trust_level": "high"
+        },
+        "common_objections": [
+            "This sounds interesting, but I'm not sure if now is the right time",
+            "I'd like to discuss this with my team first",
+            "What would you recommend for someone in my situation?",
+            "Can you help me understand which plan is best for me?"
+        ],
+        "tone": "casual",
+        "difficulty": "beginner"
+    }
+]
