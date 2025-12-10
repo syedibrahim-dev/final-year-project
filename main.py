@@ -87,6 +87,13 @@ try:
 except ImportError as e:
     print(f"❌ Failed to import mcq routes: {e}")
     traceback.print_exc()
+try:
+    from routes import chatbot
+    routes_to_import.append(("chatbot", chatbot))
+    print("✅ Chatbot routes imported")
+except ImportError as e:
+    print(f"❌ Failed to import chatbot routes: {e}")
+    traceback.print_exc()
 
 # Check if we have at least auth routes
 if not any(name == "auth" for name, _ in routes_to_import):

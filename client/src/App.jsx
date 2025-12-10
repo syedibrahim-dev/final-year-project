@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
     Home, UserPlus, Upload, Loader2, Brain, 
-    BarChart2, FileText, FolderOpen, Search, LogOut, Sparkles, Zap
+    BarChart2, FileText, FolderOpen, Search, LogOut, Sparkles, Zap, MessageSquare
 } from 'lucide-react';
 import { apiFetch, auth as authApi } from './utils/api';
 
@@ -11,6 +11,7 @@ import { OrgCreateView, RegisterView, roles } from './pages/RegisterOrg';
 import ContentUploadView from './pages/ContentUpload';
 import ContentRetrieverView from './pages/ContentRetriever';
 import ContentManagerView from './pages/ContentManager';
+import KnowledgeChatbot from './pages/KnowledgeChatbot';
 
 // MCQ Features
 import MCQPracticeView from './pages/MCQPractice';
@@ -288,6 +289,12 @@ const DashboardView = ({ token, user, logout }) => {
             </div>
             <MenuItem onClick={() => setView('mcq-practice')} active={view === 'mcq-practice'} icon={<Brain />} label="MCQ Practice" />
             <MenuItem onClick={() => setView('search')} active={view === 'search'} icon={<Search />} label="Search Knowledge" />
+            <MenuItem 
+                onClick={() => setView('knowledge-chat')} 
+                active={view === 'knowledge-chat'} 
+                icon={<MessageSquare />} 
+                label="💬 Knowledge Chat" 
+            />
             
             {(['admin', 'manager', 'trainer'].includes(user.role)) && (
                 <>
@@ -359,6 +366,8 @@ const DashboardView = ({ token, user, logout }) => {
                 return <MCQTestCreator orgId={user.organization_id} token={token} />;
             case 'performance':
                 return <PerformanceDashboard orgId={user.organization_id} token={token} />;
+            case 'knowledge-chat':
+                return <KnowledgeChatbot orgId={user.organization_id} token={token} />;
             default:
                 return <ProfileView user={user} />;
         }
