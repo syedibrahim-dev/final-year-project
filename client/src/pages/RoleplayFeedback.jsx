@@ -236,6 +236,39 @@ export default function RoleplayFeedback({ sessionId, token, onBack, initialNlpD
                     </div>
                 </div>
             )}
+
+            {/* Coaching Tip - Only show when LLM is done */}
+            {!loadingLlm && llmFeedback && llmFeedback.coaching_tip && (
+                <div className="bg-gradient-to-br from-violet-50 to-purple-50 p-6 rounded-3xl border-2 border-violet-200 shadow-xl">
+                    <div className="flex items-center space-x-2 mb-4">
+                        <Award className="h-6 w-6 text-violet-600" />
+                        <h4 className="text-xl font-black text-violet-800">💡 Coaching Tip</h4>
+                    </div>
+                    <p className="text-slate-700 leading-relaxed font-medium bg-white/60 p-4 rounded-2xl">
+                        {llmFeedback.coaching_tip}
+                    </p>
+                </div>
+            )}
+
+            {/* Per-Category AI Feedback - Only show when LLM is done */}
+            {!loadingLlm && llmFeedback && llmFeedback.category_feedback && Object.keys(llmFeedback.category_feedback).length > 0 && (
+                <div className="bg-gradient-to-br from-slate-50 to-gray-50 p-6 rounded-3xl border-2 border-slate-200 shadow-xl">
+                    <div className="flex items-center space-x-2 mb-4">
+                        <BarChart3 className="h-6 w-6 text-slate-600" />
+                        <h4 className="text-xl font-black text-slate-800">Detailed Category Feedback</h4>
+                    </div>
+                    <div className="space-y-3">
+                        {Object.entries(llmFeedback.category_feedback).map(([key, comment]) => (
+                            <div key={key} className="bg-white/80 p-4 rounded-2xl border border-slate-100">
+                                <p className="text-sm font-black text-cyan-700 uppercase tracking-wide mb-1">
+                                    {categoryLabels[key] || key.replace(/_/g, ' ')}
+                                </p>
+                                <p className="text-slate-700 text-sm leading-relaxed">{comment}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

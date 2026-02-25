@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     Home, UserPlus, Upload, Loader2, Brain,
-    BarChart2, FileText, FolderOpen, Search, LogOut, Sparkles, Zap, MessageCircle
+    BarChart2, FileText, FolderOpen, Search, LogOut, Sparkles, Zap, MessageSquare, MessageCircle
 } from 'lucide-react';
 import { apiFetch, auth as authApi } from './utils/api';
 
@@ -11,6 +11,7 @@ import { OrgCreateView, RegisterView, roles } from './pages/RegisterOrg';
 import ContentUploadView from './pages/ContentUpload';
 import ContentRetrieverView from './pages/ContentRetriever';
 import ContentManagerView from './pages/ContentManager';
+import KnowledgeChatbot from './pages/KnowledgeChatbot';
 
 // MCQ Features
 import MCQPracticeView from './pages/MCQPractice';
@@ -261,6 +262,7 @@ const InviteUserView = ({ user, token }) => {
 const DashboardView = ({ token, user, logout }) => {
     const [view, setView] = useState('profile');
     const [sessionData, setSessionData] = useState(null); // For roleplay session
+    const [nlpData, setNlpData] = useState(null); // NLP evaluation from session end
 
     if (!user) {
         return (
@@ -293,6 +295,12 @@ const DashboardView = ({ token, user, logout }) => {
             <MenuItem onClick={() => setView('mcq-practice')} active={view === 'mcq-practice'} icon={<Brain />} label="MCQ Practice" />
             <MenuItem onClick={() => setView('roleplay')} active={view === 'roleplay'} icon={<MessageCircle />} label="AI Roleplay" />
             <MenuItem onClick={() => setView('search')} active={view === 'search'} icon={<Search />} label="Search Knowledge" />
+            <MenuItem
+                onClick={() => setView('knowledge-chat')}
+                active={view === 'knowledge-chat'}
+                icon={<MessageSquare />}
+                label="💬 Knowledge Chat"
+            />
 
             {(['admin', 'manager', 'trainer'].includes(user.role)) && (
                 <>
@@ -369,8 +377,9 @@ const DashboardView = ({ token, user, logout }) => {
                 return <RoleplayChat
                     sessionId={sessionData?.sessionId}
                     token={token}
-                    onEnd={() => {
-                        // Go straight to feedback (no popup)
+                    onEnd={(receivedNlpData) => {
+                        // Capture NLP data returned from session end, then go to feedback
+                        setNlpData(receivedNlpData || null);
                         setView('roleplay-feedback');
                     }}
                 />;
@@ -378,15 +387,19 @@ const DashboardView = ({ token, user, logout }) => {
                 return <RoleplayFeedback
                     sessionId={sessionData?.sessionId}
                     token={token}
+                    initialNlpData={nlpData}
                     onBack={() => {
                         setView('roleplay');
                         setSessionData(null);
+                        setNlpData(null);
                     }}
                 />;
             case 'create-test':
                 return <MCQTestCreator orgId={user.organization_id} token={token} />;
             case 'performance':
-                return <PerformanceDashboard orgId={user.organization_id} token={token} />;
+                return <PerformanceDashboard key={`perf-${Date.now()}`} orgId={user.organization_id} token={token} userId={user.id} />;
+            case 'knowledge-chat':
+                return <KnowledgeChatbot orgId={user.organization_id} token={token} />;
             default:
                 return <ProfileView user={user} />;
         }
@@ -394,7 +407,7 @@ const DashboardView = ({ token, user, logout }) => {
 
     return (
         <div className="flex flex-col lg:flex-row max-w-7xl mx-auto p-4 md:p-8 space-y-6 lg:space-y-0 lg:space-x-8">
-            <div className="w-full lg:w-1/4">
+            <div className="w-full lg:w-1/4 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
                 <DashboardMenu />
             </div>
             <div className="w-full lg:w-3/4">

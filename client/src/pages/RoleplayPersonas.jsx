@@ -106,7 +106,7 @@ export default function RoleplayPersonas({ token, navigate }) {
                 {personas.map((persona) => (
                     <div
                         key={persona.id}
-                        className="bg-gradient-to-br from-white to-slate-50 p-6 rounded-3xl border-2 border- slate-200 shadow-xl hover:shadow-2xl hover:border-cyan-300 transition-all duration-300 group cursor-pointer"
+                        className="bg-gradient-to-br from-white to-slate-50 p-6 rounded-3xl border-2 border-slate-200 shadow-xl hover:shadow-2xl hover:border-cyan-300 transition-all duration-300 group cursor-pointer"
                         onClick={() => startSession(persona.id)}
                     >
                         {/* Header */}

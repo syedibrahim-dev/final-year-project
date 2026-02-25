@@ -18,7 +18,7 @@ class OllamaClient:
         temperature: float = None
     ):
         self.base_url = base_url or settings.LOCAL_LLM_BASE_URL
-        self.model = model or settings.LOCAL_LLM_MODEL
+        self.model = model or getattr(settings, 'ROLEPLAY_LLM_MODEL', settings.LOCAL_LLM_MODEL)
         self.temperature = temperature or settings.LOCAL_LLM_TEMPERATURE
         self.chat_endpoint = f"{self.base_url}/api/chat"
     
@@ -133,7 +133,8 @@ class OllamaClient:
 def generate_customer_response(
     persona,
     history: list,
-    trainee_message: str
+    trainee_message: str,
+    org_id: int = None
 ) -> str:
     """
     Generate customer response using Ollama
@@ -142,14 +143,15 @@ def generate_customer_response(
         persona: RoleplayPersona instance
         history: List of previous messages
         trainee_message: Latest trainee message
+        org_id: Organization ID for document context retrieval
     
     Returns:
         Generated customer response
     """
     from roleplay.prompts import build_customer_prompt
     
-    # Build prompts
-    prompt_data = build_customer_prompt(persona, history, trainee_message)
+    # Build prompts (with document context if org_id provided)
+    prompt_data = build_customer_prompt(persona, history, trainee_message, org_id=org_id)
     
     # Call Ollama
     client = OllamaClient()
@@ -165,7 +167,8 @@ def generate_customer_response(
 def stream_customer_response(
     persona,
     history: list,
-    trainee_message: str
+    trainee_message: str,
+    org_id: int = None
 ) -> Generator[str, None, None]:
     """
     Stream customer response using Ollama
@@ -174,14 +177,15 @@ def stream_customer_response(
         persona: RoleplayPersona instance
         history: List of previous messages
         trainee_message: Latest trainee message
+        org_id: Organization ID for document context retrieval
     
     Yields:
         Response chunks
     """
     from roleplay.prompts import build_customer_prompt
     
-    # Build prompts
-    prompt_data = build_customer_prompt(persona, history, trainee_message)
+    # Build prompts (with document context if org_id provided)
+    prompt_data = build_customer_prompt(persona, history, trainee_message, org_id=org_id)
     
     # Stream from Ollama
     client = OllamaClient()
@@ -190,3 +194,4 @@ def stream_customer_response(
         user_message=prompt_data["user_message"]
     ):
         yield chunk
+

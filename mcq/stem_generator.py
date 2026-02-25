@@ -17,7 +17,7 @@ class StemGenerator:
     
     def __init__(self):
         self.llm = Ollama(
-            model=settings.LOCAL_LLM_MODEL,
+            model=settings.MCQ_LLM_MODEL,
             base_url=settings.LOCAL_LLM_BASE_URL,
             temperature=0.7,
             num_ctx=4096
@@ -110,7 +110,7 @@ class StemGenerator:
         
         prompt = f"""Generate {num_needed} UNIQUE and DIVERSE multiple-choice questions about {topic}.
 
-**TRAINING MATERIAL:**
+**TRAINING MATERIAL (YOUR ONLY SOURCE OF TRUTH):**
 {context[:1000]}
 
 **TOPIC:** {topic}
@@ -120,29 +120,69 @@ class StemGenerator:
 
 {difficulty_guide}
 
-**CRITICAL DIVERSITY RULES:**
-1. Each question must test a DIFFERENT concept/aspect
+**🚨 STRICT GROUNDING REQUIREMENTS (CRITICAL):**
+1. ALL questions MUST be answerable using ONLY the training material above
+2. DO NOT use external knowledge, pre-training data, or general domain knowledge
+3. DO NOT assume standard practices, industry norms, or common patterns
+4. If information is NOT explicitly stated in the training material, it does NOT exist
+5. DO NOT hallucinate features, terms, processes, or details not in the text
+
+**QUOTATION VERIFICATION (REQUIRED):**
+Before generating each question, you MUST identify the specific text snippet from the training material that contains the answer. Only generate questions where you can quote the exact source.
+
+**NEGATIVE CONSTRAINTS:**
+- ❌ DO NOT use knowledge about Salesforce, AWS, or other platforms
+- ❌ DO NOT assume standard contract terms or legal practices
+- ❌ DO NOT invent product features or capabilities
+- ❌ DO NOT use industry-standard terminology unless explicitly in the text
+- ❌ DO NOT fill gaps with "common sense" or "typical" approaches
+
+**DIVERSITY RULES:**
+1. Each question must test a DIFFERENT concept/aspect from the text
 2. Use DIFFERENT question words (what, how, why, which, when, where)
 3. DO NOT repeat existing questions
 4. DO NOT create variations of the same question
-5. Questions must be 10-20 words
-6. Each question must end with '?'
+5. Questions must be 10-20 words and end with '?'
+
+**SPECIFICITY REQUIREMENTS (CRITICAL):**
+- ❌ AVOID generic questions: "What is X?", "What is the purpose of Y?"
+- ✅ PREFER specific questions: "What percentage...", "Which feature...", "How does X integrate with Y?"
+- ✅ Include numbers, names, specific terms from the text
+- ✅ Ask about relationships, processes, technical details
+- ❌ DO NOT ask about section numbers or document structure
 
 **Generate {num_needed} DIVERSE questions (JSON format):**
 [
   {{"stem_text": "Different question 1?", "cognitive_level": "remember"}},
   {{"stem_text": "Different question 2?", "cognitive_level": "understand"}},
-  ...
+  {{"stem_text": "Different question 3?", "cognitive_level": "apply"}}
 ]
 
 JSON only:"""
 
         try:
-            response = self.llm.invoke(prompt).strip()
-            stems = self._extract_json_from_response(response)
+            # ✅ Add timeout and error handling for Ollama
+            import time
+            max_retries = 2
             
-            if not stems:
-                stems = self._extract_questions_manually(response, topic, difficulty)
+            for retry in range(max_retries):
+                try:
+                    response = self.llm.invoke(prompt).strip()
+                    stems = self._extract_json_from_response(response)
+                    
+                    if not stems:
+                        stems = self._extract_questions_manually(response, topic, difficulty)
+                    
+                    if stems:
+                        break  # Success!
+                    
+                except Exception as e:
+                    if retry < max_retries - 1:
+                        print(f"\n      ⚠️  Retry {retry+1}/{max_retries} after error: {str(e)[:50]}")
+                        time.sleep(2)  # Wait before retry
+                        continue
+                    else:
+                        raise
             
             # Validate and add metadata
             valid_stems = []

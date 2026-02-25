@@ -121,6 +121,9 @@ export const mcq = {
     getTest: (orgId, testId, token) =>
         apiFetch(`/mcq/tests/${testId}`, 'GET', null, token),
     
+    deleteTest: (orgId, testId, token) =>
+        apiFetch(`/mcq/tests/${testId}`, 'DELETE', null, token),
+    
     // ✅ FIXED: Submit attempt
     submitAttempt: (orgId, attemptData, token) => {
         // Start attempt first to get attempt_id
@@ -145,4 +148,49 @@ export const mcq = {
     
     getAttempt: (orgId, attemptId, token) =>
         apiFetch(`/mcq/attempts/${attemptId}`, 'GET', null, token),
+};
+
+// ========== ROLEPLAY APIs ==========
+export const roleplay = {
+    listPersonas: (token) =>
+        apiFetch('/roleplay/personas', 'GET', null, token),
+    
+    getPersona: (personaId, token) =>
+        apiFetch(`/roleplay/personas/${personaId}`, 'GET', null, token),
+    
+    startSession: (personaId, token) =>
+        apiFetch('/roleplay/sessions/start', 'POST', { persona_id: personaId }, token),
+    
+    sendMessage: (sessionId, message, token) =>
+        apiFetch(`/roleplay/sessions/${sessionId}/message`, 'POST', { message }, token),
+    
+    getMessages: (sessionId, token) =>
+        apiFetch(`/roleplay/sessions/${sessionId}/messages`, 'GET', null, token),
+    
+    endSession: (sessionId, token) =>
+        apiFetch(`/roleplay/sessions/${sessionId}/end`, 'POST', null, token),
+    
+    getSession: (sessionId, token) =>
+        apiFetch(`/roleplay/sessions/${sessionId}`, 'GET', null, token),
+    
+    getNlpEvaluation: (sessionId, token) =>
+        apiFetch(`/roleplay/sessions/${sessionId}/evaluation/nlp`, 'GET', null, token),
+    
+    triggerEvaluation: (sessionId, token) =>
+        apiFetch(`/roleplay/sessions/${sessionId}/evaluate`, 'POST', null, token),
+    
+    getEvaluation: (sessionId, token) =>
+        apiFetch(`/roleplay/sessions/${sessionId}/evaluation`, 'GET', null, token),
+    
+    listSessions: (token, limit = 20, offset = 0, status = null) => {
+        let url = `/roleplay/sessions?limit=${limit}&offset=${offset}`;
+        if (status) url += `&status=${status}`;
+        return apiFetch(url, 'GET', null, token);
+    },
+    
+    getUserAnalytics: (token) =>
+        apiFetch('/roleplay/analytics/user', 'GET', null, token),
+    
+    getOrgAnalytics: (token) =>
+        apiFetch('/roleplay/analytics/org', 'GET', null, token),
 };

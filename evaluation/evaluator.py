@@ -9,7 +9,7 @@ class MCQEvaluator:
     def __init__(
         self,
         rubric: Optional[EvaluationRubric] = None,
-        llm_model: str = "llama3.1:8b-instruct-q4_K_M"
+        llm_model: str = "phi3:mini"
     ):
         self.rubric = rubric or EvaluationRubric()
         self.llm = OllamaLLM(

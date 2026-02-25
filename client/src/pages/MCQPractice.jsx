@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Brain, CheckCircle, XCircle, RefreshCw, Loader2, Award, AlertCircle, Trophy } from 'lucide-react';
+import { Brain, CheckCircle, XCircle, RefreshCw, Loader2, Award, AlertCircle, Trophy, Trash2 } from 'lucide-react';
 import { mcq as mcqApi } from '../utils/api';
 import { Button } from '../App';
 
@@ -14,6 +14,7 @@ export default function MCQPracticeView({ orgId, token }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [startTime, setStartTime] = useState(null);
+    const [deleting, setDeleting] = useState(null);
 
     useEffect(() => {
         fetchTests();
@@ -36,6 +37,25 @@ export default function MCQPracticeView({ orgId, token }) {
             setError(`Error loading tests: ${err.message}`);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDeleteTest = async (e, testId, testTitle) => {
+        e.stopPropagation(); // Prevent triggering startTest
+        if (!window.confirm(`Delete "${testTitle}"? This will also remove all attempts and scores for this test.`)) {
+            return;
+        }
+        setDeleting(testId);
+        try {
+            await mcqApi.deleteTest(orgId, testId, token);
+            setTests(prev => prev.filter(t => t.id !== testId));
+            if (tests.length <= 1) {
+                setError('No MCQ tests available. Ask your admin to create some first.');
+            }
+        } catch (err) {
+            setError(`Failed to delete test: ${err.message}`);
+        } finally {
+            setDeleting(null);
         }
     };
 
@@ -179,12 +199,26 @@ export default function MCQPracticeView({ orgId, token }) {
                         {tests.map(test => (
                             <div
                                 key={test.id}
-                                className="bg-white border-2 border-gray-200 rounded-lg p-6 hover:border-indigo-400 transition cursor-pointer"
+                                className="bg-white border-2 border-gray-200 rounded-lg p-6 hover:border-indigo-400 transition cursor-pointer relative group"
                                 onClick={() => startTest(test.id)}
                             >
                                 <div className="flex items-start justify-between mb-3">
-                                    <h4 className="font-semibold text-gray-900 text-lg">{test.title}</h4>
-                                    <Trophy className="text-indigo-500" size={24} />
+                                    <h4 className="font-semibold text-gray-900 text-lg pr-8">{test.title}</h4>
+                                    <div className="flex items-center space-x-2">
+                                        <button
+                                            onClick={(e) => handleDeleteTest(e, test.id, test.title)}
+                                            disabled={deleting === test.id}
+                                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
+                                            title="Delete test"
+                                        >
+                                            {deleting === test.id ? (
+                                                <Loader2 className="animate-spin" size={18} />
+                                            ) : (
+                                                <Trash2 size={18} />
+                                            )}
+                                        </button>
+                                        <Trophy className="text-indigo-500" size={24} />
+                                    </div>
                                 </div>
                                 
                                 {test.description && (

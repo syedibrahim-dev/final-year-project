@@ -94,11 +94,34 @@ class VectorStoreManager:
                     "org_id": org_id
                 })
             
-            # Get collection and add documents
+            # Get collection and add documents with manually generated embeddings
             collection = self.get_collection(org_id)
             
             print(f"🔄 Generating embeddings and storing in ChromaDB...")
-            collection.add_documents(chunks)
+            
+            # Manually generate embeddings to avoid LangChain wrapper issues
+            texts = [chunk.page_content for chunk in chunks]
+            metadatas = [chunk.metadata for chunk in chunks]
+            
+            # Generate embeddings explicitly
+            embeddings = self.embedding_manager.embed_documents(texts)
+            
+            if not embeddings:
+                raise Exception("Embedding model returned empty embeddings")
+            
+            print(f"   ✅ Generated {len(embeddings)} embeddings (dim={len(embeddings[0])})")
+            
+            # Generate unique IDs for each chunk
+            import uuid
+            ids = [f"{content_id}_chunk_{i}_{uuid.uuid4().hex[:8]}" for i in range(len(texts))]
+            
+            # Use ChromaDB's native add via the LangChain wrapper's underlying collection
+            collection.add_texts(
+                texts=texts,
+                metadatas=metadatas,
+                embeddings=embeddings,
+                ids=ids
+            )
             
             # Persist to disk
             if hasattr(collection, 'persist'):

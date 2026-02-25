@@ -15,7 +15,17 @@ from models.roleplay import (
 from roleplay.llm_client import generate_customer_response
 from roleplay.evaluator import evaluate_session_conversation
 from models.roleplay import RoleplayEvaluation
+from roleplay.nlp_evaluator import NLPEvaluator
 import json
+
+# Singleton NLP evaluator — avoids reloading heavy ML models per call
+_nlp_evaluator_instance = None
+
+def _get_nlp_evaluator():
+    global _nlp_evaluator_instance
+    if _nlp_evaluator_instance is None:
+        _nlp_evaluator_instance = NLPEvaluator()
+    return _nlp_evaluator_instance
 
 
 def create_session(
@@ -178,7 +188,8 @@ def generate_ai_response(
         ai_response_text = generate_customer_response(
             persona=persona,
             history=history,
-            trainee_message=trainee_message
+            trainee_message=trainee_message,
+            org_id=session.organization_id
         )
     except Exception as e:
         # Rollback trainee message if AI generation fails
@@ -267,7 +278,6 @@ def evaluate_session_nlp(
     Returns:
         NLP evaluation results
     """
-    from roleplay.nlp_evaluator import NLPEvaluator
     
     # Get conversation history
     messages = get_conversation_history(db, session_id)
@@ -286,8 +296,8 @@ def evaluate_session_nlp(
         for msg in messages
     ]
     
-    # Run NLP evaluation (fast!)
-    nlp_evaluator = NLPEvaluator()
+    # Run NLP evaluation (fast!) — uses singleton to avoid model reloads
+    nlp_evaluator = _get_nlp_evaluator()
     nlp_results = nlp_evaluator.evaluate(message_dicts)
     
     return nlp_results
@@ -317,10 +327,11 @@ def evaluate_session(
     if session.status != SessionStatus.COMPLETED.value:
         raise ValueError(f"Session must be completed before evaluation")
     
-    # Check if already evaluated
+    # Check if already evaluated - delete and re-evaluate
     existing_eval = db.query(RoleplayEvaluation).filter_by(session_id=session_id).first()
     if existing_eval:
-        return existing_eval
+        db.delete(existing_eval)
+        db.commit()
     
     # Get conversation history
     messages = get_conversation_history(db, session_id)
@@ -342,22 +353,39 @@ def evaluate_session(
     
     # Step 2: Get LLM qualitative feedback (slow, subjective)
     try:
-        llm_feedback = evaluate_session_conversation(messages, persona)
+        llm_feedback = evaluate_session_conversation(messages, persona, org_id=session.organization_id)
     except Exception as e:
         raise Exception(f"LLM evaluation failed: {str(e)}")
     
     # Combine both evaluations
+    # Hybrid scoring: blend NLP scores (60%) with LLM scores (40%) when available
+    llm_category_scores = llm_feedback.get('llm_category_scores', {})
+    final_category_scores = nlp_results['category_scores'].copy()
+    
+    if llm_category_scores:
+        for cat_key in final_category_scores:
+            if cat_key in llm_category_scores:
+                nlp_val = final_category_scores[cat_key]
+                llm_val = llm_category_scores[cat_key]
+                # Weighted blend: 60% NLP (objective) + 40% LLM (contextual)
+                final_category_scores[cat_key] = round(nlp_val * 0.6 + llm_val * 0.4)
+    
+    final_overall_score = sum(final_category_scores.values())
+    
     evaluation = RoleplayEvaluation(
         session_id=session_id,
-        overall_score=nlp_results['overall_score'],  # From NLP
-        category_scores=nlp_results['category_scores'],  # From NLP
-        summary=llm_feedback.get('summary'),  # From LLM
-        strengths=llm_feedback['strengths'],  # From LLM
-        improvement_areas=llm_feedback['improvements'],  # From LLM (note: field name is improvement_areas)
-        nlp_metrics=nlp_results['detailed_metrics'],  # Full NLP breakdown
-        detailed_feedback={  # Combined for reference
+        overall_score=final_overall_score,
+        category_scores=final_category_scores,
+        summary=llm_feedback.get('summary'),
+        strengths=llm_feedback['strengths'],
+        improvement_areas=llm_feedback['improvements'],
+        nlp_metrics=nlp_results['detailed_metrics'],
+        detailed_feedback={
             'nlp': nlp_results,
-            'llm': llm_feedback
+            'llm': llm_feedback,
+            'hybrid_scores': final_category_scores,
+            'coaching_tip': llm_feedback.get('coaching_tip', ''),
+            'category_feedback': llm_feedback.get('category_feedback', {})
         }
     )
     

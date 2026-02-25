@@ -15,9 +15,9 @@ class DistractorGenerator:
     
     def __init__(self):
         self.llm = Ollama(
-            model=settings.LOCAL_LLM_MODEL,
+            model=settings.MCQ_LLM_MODEL,
             base_url=settings.LOCAL_LLM_BASE_URL,
-            temperature=0.8  # Higher temperature for diversity
+            temperature=0.6  # Balanced: diverse but coherent
         )
     
     def generate_distractors_simple(
@@ -149,7 +149,7 @@ class DistractorGenerator:
         num_distractors: int,
         difficulty: str
     ) -> str:
-        """Create prompt for distractor generation"""
+        """Create prompt for distractor generation with external knowledge allowed"""
         
         return f"""You are an expert at creating plausible but INCORRECT answers for quiz questions.
 
@@ -164,30 +164,50 @@ class DistractorGenerator:
 
 **Task:** Generate {num_distractors} plausible WRONG answers (distractors).
 
+**✅ ALLOWED STRATEGIES (Use external knowledge to create challenging distractors):**
+1. **Common Misconceptions**: Use typical misunderstandings from the domain
+2. **Industry Standards**: Reference Salesforce, AWS, Azure, or other platform practices
+3. **Standard Business Practices**: Use common contract terms, payment models, or workflows
+4. **Similar Technologies**: Confuse with related products, services, or methodologies
+5. **Partial Knowledge**: Combine correct concepts in incorrect ways
+6. **Outdated Approaches**: Reference older or deprecated practices
+7. **Over-Generalization**: Apply rules from other contexts incorrectly
+
 **CRITICAL RULES:**
 1. Distractors MUST be DIFFERENT from the correct answer
-2. Distractors MUST be plausibly INCORRECT
+2. Distractors MUST be plausibly INCORRECT (believable but wrong)
 3. DO NOT repeat or paraphrase the correct answer
-4. Each distractor should represent a common misconception
+4. Make distractors challenging - use real-world alternatives
 5. Keep distractors similar length to correct answer
+
+**EXAMPLES OF GOOD DISTRACTORS:**
+- If correct answer is "Net 30", distractors could be:
+  • "Payment due upon completion with 50% deposit" (standard practice)
+  • "Net 60 with early payment discount" (common alternative)
+  • "Milestone-based payment schedule" (industry standard)
+
+- If correct answer is "XYZ Smart-Throttling", distractors could be:
+  • "Salesforce API Governor Limits" (platform-specific)
+  • "AWS Lambda Concurrency Controls" (cloud standard)
+  • "Rate limiting using Redis cache" (technical alternative)
 
 **Output Format (JSON ONLY - no explanations):**
 {{
   "distractors": [
     {{
-      "text": "First plausible wrong answer (different from correct)",
+      "text": "First plausible wrong answer using external knowledge",
       "plausibility_score": 0.7,
-      "misconception_type": "common_error"
+      "misconception_type": "industry_standard"
     }},
     {{
-      "text": "Second plausible wrong answer (different from correct)",
+      "text": "Second plausible wrong answer using common practices",
       "plausibility_score": 0.8,
-      "misconception_type": "partial_knowledge"
+      "misconception_type": "platform_specific"
     }},
     {{
-      "text": "Third plausible wrong answer (different from correct)",
+      "text": "Third plausible wrong answer using misconception",
       "plausibility_score": 0.6,
-      "misconception_type": "confusion"
+      "misconception_type": "partial_knowledge"
     }}
   ]
 }}
@@ -277,44 +297,76 @@ Generate the JSON now (WRONG answers only):"""
         count: int
     ) -> List[Dict[str, Any]]:
         """
-        ✅ IMPROVED: Generate contextual fallback distractors
-        Instead of "Alternative answer N", create topic-relevant fallbacks
+        Generate contextual fallback distractors by mutating the correct answer.
         """
+        import re as _re
         
         fallbacks = []
-        existing_texts = [d.get('text', '') for d in existing_distractors]
-        existing_texts.append(correct_answer)
+        existing_texts = [d.get('text', '').lower() for d in existing_distractors]
+        existing_texts.append(correct_answer.lower())
+        ca = correct_answer.strip()
         
-        # Extract topic from question
-        stem_words = stem.lower().split()
+        candidates = []
         
-        # Contextual fallback templates
-        templates = [
-            "Applies only to specific enterprise scenarios",
-            "Common misconception in this domain",
-            "Partial understanding of the concept",
-            "Confuses this with related technology",
-            "Outdated approach no longer recommended",
-            "Incomplete or oversimplified explanation",
-            "Misinterpretation of key requirements",
-            "Alternative but incorrect methodology"
-        ]
+        # Strategy 1: Numeric mutations
+        nums = _re.findall(r'\\d+', ca)
+        if nums:
+            for n in nums[:2]:
+                val = int(n)
+                for mult in [2, 0.5, 1.5]:
+                    candidates.append(ca.replace(n, str(int(val * mult)), 1))
         
-        for i in range(count):
-            if i < len(templates):
-                text = templates[i]
-            else:
-                text = f"Not the primary purpose or function"
-            
-            # Ensure uniqueness
-            if text not in existing_texts:
+        # Strategy 2: Negation / word swap
+        swaps = {
+            'increase': 'decrease', 'before': 'after', 'internal': 'external',
+            'all': 'some', 'always': 'sometimes', 'required': 'optional',
+            'maximum': 'minimum', 'primary': 'secondary', 'first': 'last',
+            'enable': 'disable', 'include': 'exclude', 'accept': 'reject',
+        }
+        ca_lower = ca.lower()
+        for old, new in swaps.items():
+            if old in ca_lower:
+                idx = ca_lower.find(old)
+                candidates.append(ca[:idx] + new + ca[idx + len(old):])
+        
+        # Strategy 3: Partial answer (first half)
+        words = ca.split()
+        if len(words) > 4:
+            candidates.append(' '.join(words[:len(words)//2]))
+            candidates.append(' '.join(words[len(words)//2:]))
+        
+        # Strategy 4: Extract key nouns from stem for context-aware fallback
+        stem_words = [w for w in stem.split() if len(w) > 4 and w[0].isupper()]
+        if stem_words:
+            candidates.append(f"Related to {stem_words[0]} but applied differently")
+        
+        for c in candidates:
+            if len(fallbacks) >= count:
+                break
+            c_clean = c.strip()
+            if c_clean.lower() not in existing_texts and c_clean.lower() != ca.lower() and len(c_clean) > 3:
                 fallbacks.append({
-                    'text': text,
+                    'text': c_clean,
                     'plausibility_score': 0.5,
-                    'misconception_type': 'fallback',
+                    'misconception_type': 'contextual_fallback',
                     'is_fallback': True
                 })
-                existing_texts.append(text)
+                existing_texts.append(c_clean.lower())
+        
+        # Last resort if still short
+        while len(fallbacks) < count:
+            text = f"Alternative approach not supported by the material"
+            if text.lower() not in existing_texts:
+                fallbacks.append({
+                    'text': text,
+                    'plausibility_score': 0.4,
+                    'misconception_type': 'generic_fallback',
+                    'is_fallback': True
+                })
+                existing_texts.append(text.lower())
+                text = f"Commonly confused with a different concept"
+            else:
+                break
         
         return fallbacks
     

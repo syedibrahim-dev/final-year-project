@@ -6,9 +6,12 @@ from config.settings import settings
 # Create database engine with MySQL-specific settings
 engine = create_engine(
     settings.DATABASE_URL,
-    pool_pre_ping=True,  # Test connections before using them
-    pool_recycle=3600,   # Recycle connections after 1 hour
-    echo=False           # Set to True for SQL query logging
+    pool_pre_ping=True,      # Test connections before using them
+    pool_recycle=3600,       # Recycle connections after 1 hour
+    pool_size=10,            # Base pool size (default was 5)
+    max_overflow=20,         # Extra connections allowed (default was 10)
+    pool_timeout=30,         # Timeout waiting for connection
+    echo=False               # Set to True for SQL query logging
 )
 
 # Create session factory

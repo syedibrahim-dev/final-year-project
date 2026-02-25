@@ -1,3 +1,7 @@
+# Python 3.14+ compatibility patch - MUST be first import
+# Fixes pydantic.v1 PEP 649 deferred annotations issue (affects chromadb)
+import compat_patch  # noqa: F401
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -86,6 +90,13 @@ try:
     print("✅ MCQ routes imported")
 except ImportError as e:
     print(f"❌ Failed to import mcq routes: {e}")
+    traceback.print_exc()
+try:
+    from routes import chatbot
+    routes_to_import.append(("chatbot", chatbot))
+    print("✅ Chatbot routes imported")
+except ImportError as e:
+    print(f"❌ Failed to import chatbot routes: {e}")
     traceback.print_exc()
 
 # Roleplay routes
