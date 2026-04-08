@@ -51,7 +51,10 @@ def create_db_tables():
         from models.training_content import TrainingContent
         from models.mcq import MCQTest, MCQAttempt
         from models.roleplay import RoleplayPersona, RoleplaySession, RoleplayMessage, RoleplayEvaluation
-        
+        from models.marketing import MarketingPost
+        from models.inventory import Store, Product, SalesTransaction, InventoryForecast, StockAlert
+        from models.lead import Lead, AutomatedOutreach
+
         print("✅ Models imported successfully")
     except ImportError as e:
         print(f"⚠️  Warning: Some models failed to import: {e}")

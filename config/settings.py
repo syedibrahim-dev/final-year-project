@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     """Application settings"""
     
     # Database - will read from .env or use default
-    DATABASE_URL: str = "mysql+pymysql://shah:pokemon1234@localhost:3306/salesforge_db"
+    DATABASE_URL: str = "mysql+pymysql://root:shaheer1@localhost:3306/salesforge_db"
     
     # Security
     SECRET_KEY: str = "your-secret-key-change-in-production"
@@ -28,10 +28,18 @@ class Settings(BaseSettings):
     
     # ChromaDB
     CHROMA_PERSIST_DIR: str = "./chroma_db"
-    
+
     # Chunking
     CHUNK_SIZE: int = 500
     CHUNK_OVERLAP: int = 50
+
+    # ── Module 5b: AI Image Generation (Colab FLUX API) ──────────────────────
+    # Update this whenever your Colab ngrok URL changes (restart Colab → new URL).
+    IMAGE_GEN_URL: str = "https://unurban-sade-nondomineering.ngrok-free.dev"
+
+    # ── Module 5a: SMTP Server Settings ──────────────────────────────────────
+    SMTP_EMAIL: str | None = None
+    SMTP_PASSWORD: str | None = None
     
     class Config:
         env_file = ".env"          # ✅ Automatically loads from .env

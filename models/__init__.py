@@ -13,6 +13,13 @@ from models.roleplay import (
     RoleplayMessage,
     RoleplayEvaluation,
 )
+from models.inventory import (
+    Store,
+    Product,
+    SalesTransaction,
+    InventoryForecast,
+    StockAlert,
+)
 
 __all__ = [
     "Base",
@@ -26,4 +33,9 @@ __all__ = [
     "RoleplaySession",
     "RoleplayMessage",
     "RoleplayEvaluation",
+    "Store",
+    "Product",
+    "SalesTransaction",
+    "InventoryForecast",
+    "StockAlert",
 ]

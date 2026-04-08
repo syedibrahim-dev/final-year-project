@@ -108,6 +108,45 @@ except ImportError as e:
     print(f"❌ Failed to import roleplay routes: {e}")
     traceback.print_exc()
 
+# Marketing routes (Module 5b)
+try:
+    from routes import marketing
+    routes_to_import.append(("marketing", marketing))
+    print("✅ Marketing routes imported")
+except ImportError as e:
+    print(f"❌ Failed to import marketing routes: {e}")
+    traceback.print_exc()
+
+# Inventory routes (Module 5e)
+try:
+    from routes import inventory
+    routes_to_import.append(("inventory", inventory))
+    print("✅ Inventory routes imported")
+except ImportError as e:
+    print(f"❌ Failed to import inventory routes: {e}")
+    traceback.print_exc()
+
+# Analytics routes (Module 5f)
+try:
+    from routes import analytics
+    routes_to_import.append(("analytics", analytics))
+    print("✅ Analytics routes imported")
+except ImportError as e:
+    print(f"❌ Failed to import analytics routes: {e}")
+    traceback.print_exc()
+
+# Lead scoring routes (Module 5a)
+try:
+    from routes import leads
+    routes_to_import.append(("leads", leads))
+    print("✅ Lead scoring routes imported")
+    # Pre-load the ML pipeline
+    from services.lead_scoring_service import load_pipeline
+    load_pipeline()
+except ImportError as e:
+    print(f"❌ Failed to import lead scoring routes: {e}")
+    traceback.print_exc()
+
 # Check if we have at least auth routes
 if not any(name == "auth" for name, _ in routes_to_import):
     print("\n❌ CRITICAL: Auth routes failed to import!")
@@ -115,6 +154,32 @@ if not any(name == "auth" for name, _ in routes_to_import):
     sys.exit(1)
 
 print(f"\n✅ Successfully imported {len(routes_to_import)} route modules")
+
+# ── APScheduler: background job for publishing scheduled posts ──────────────
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from services.marketing_service import publish_due_posts
+    from utils.database import SessionLocal as _SessionLocal
+
+    def _run_publish_job():
+        db = _SessionLocal()
+        try:
+            publish_due_posts(db)
+        except Exception as _e:
+            print(f"⚠️  Scheduler publish job error: {_e}")
+        finally:
+            db.close()
+
+    _scheduler = BackgroundScheduler()
+    _scheduler.add_job(_run_publish_job, trigger="interval", seconds=60, id="publish_scheduled_posts")
+    _scheduler.start()
+    print("✅ APScheduler started — checks for scheduled posts every 60 s")
+except ImportError:
+    print("⚠️  apscheduler not installed — scheduled posts won't auto-publish.")
+    print("   Run:  pip install apscheduler")
+except Exception as _sched_err:
+    print(f"⚠️  Could not start scheduler: {_sched_err}")
+
 
 # Startup event
 @app.on_event("startup")
@@ -268,4 +333,4 @@ def api_info():
     }
 
 print("🎉 Application initialized successfully!")
-print("🚀 Ready to accept requests\n")
+print("🚀 Ready to accept requests\n")

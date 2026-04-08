@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-    Home, UserPlus, Upload, Loader2, Brain,
-    BarChart2, FileText, FolderOpen, Search, LogOut, Sparkles, Zap, MessageSquare, MessageCircle
+    Home, UserPlus, Upload, Loader2, Brain, Activity, Users, TrendingUp,
+    BarChart2, FileText, FolderOpen, Search, LogOut, Sparkles, Zap, MessageSquare, MessageCircle, Package, Box
 } from 'lucide-react';
 import { apiFetch, auth as authApi } from './utils/api';
 
@@ -22,6 +22,12 @@ import PerformanceDashboard from './pages/PerformanceDashboard';
 import RoleplayPersonas from './pages/RoleplayPersonas';
 import RoleplayChat from './pages/RoleplayChat';
 import RoleplayFeedback from './pages/RoleplayFeedback';
+
+// Module 5: Automation
+import MarketingPostCreator from './pages/MarketingPostCreator';
+import InventoryManagerView from './pages/InventoryManager';
+import TransactionAnalytics from './pages/TransactionAnalytics';
+import LeadManager from './pages/LeadManager';
 
 // ===== UI Components ===== 
 export const Card = ({ title, icon, children, onClick, className = '' }) => (
@@ -263,6 +269,10 @@ const DashboardView = ({ token, user, logout }) => {
     const [view, setView] = useState('profile');
     const [sessionData, setSessionData] = useState(null); // For roleplay session
     const [nlpData, setNlpData] = useState(null); // NLP evaluation from session end
+    // Marketing gen state lives here so it survives sidebar navigation
+    const [marketingGenState, setMarketingGenState] = useState({
+        jobId: null, loading: false, status: '', image: null,
+    });
 
     if (!user) {
         return (
@@ -301,6 +311,55 @@ const DashboardView = ({ token, user, logout }) => {
                 icon={<MessageSquare />}
                 label="💬 Knowledge Chat"
             />
+
+            {(['admin', 'manager'].includes(user.role)) && (
+                <>
+                    <div className="pt-4 border-t-2 border-slate-200 mt-3">
+                        <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-3 flex items-center">
+                            <Sparkles size={14} className="mr-2 text-violet-500" />
+                            Marketing
+                        </h3>
+                    </div>
+                    <MenuItem
+                        onClick={() => setView('marketing-posts')}
+                        active={view === 'marketing-posts'}
+                        icon={<Sparkles />}
+                        label="Marketing Posts"
+                    />
+                    
+                    <div className="pt-4 border-t-2 border-slate-200 mt-3">
+                        <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-3 flex items-center">
+                            <Box size={14} className="mr-2 text-emerald-500" />
+                            Inventory
+                        </h3>
+                    </div>
+                    <MenuItem
+                        onClick={() => setView('inventory')}
+                        active={view === 'inventory'}
+                        icon={<Package />}
+                        label="Inventory Forecasts"
+                    />
+                    <MenuItem
+                        onClick={() => setView('analytics')}
+                        active={view === 'analytics'}
+                        icon={<Activity />}
+                        label="Transaction Analytics"
+                    />
+
+                    <div className="pt-4 border-t-2 border-slate-200 mt-3">
+                        <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-3 flex items-center">
+                            <Users size={14} className="mr-2 text-blue-500" />
+                            Lead Management
+                        </h3>
+                    </div>
+                    <MenuItem
+                        onClick={() => setView('lead-scoring')}
+                        active={view === 'lead-scoring'}
+                        icon={<TrendingUp />}
+                        label="Lead Scoring"
+                    />
+                </>
+            )}
 
             {(['admin', 'manager', 'trainer'].includes(user.role)) && (
                 <>
@@ -400,6 +459,14 @@ const DashboardView = ({ token, user, logout }) => {
                 return <PerformanceDashboard key={`perf-${Date.now()}`} orgId={user.organization_id} token={token} userId={user.id} />;
             case 'knowledge-chat':
                 return <KnowledgeChatbot orgId={user.organization_id} token={token} />;
+            case 'marketing-posts':
+                return <MarketingPostCreator token={token} genState={marketingGenState} setGenState={setMarketingGenState} />;
+            case 'inventory':
+                return <InventoryManagerView orgId={user.organization_id} token={token} />;
+            case 'analytics':
+                return <TransactionAnalytics token={token} />;
+            case 'lead-scoring':
+                return <LeadManager token={token} />;
             default:
                 return <ProfileView user={user} />;
         }
