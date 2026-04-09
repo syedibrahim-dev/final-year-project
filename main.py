@@ -158,6 +158,19 @@ async def startup_event():
         except Exception as e:
             print("⚠️  Ollama LLM service not available (MCQ generation will fail)")
         
+        # Pre-warm SalesRLAgent subprocess (loads PPO + BGE-M3 in background)
+        try:
+            from config.settings import settings as _settings
+            if getattr(_settings, "ENABLE_SALESRL_AGENT", False):
+                from services.conversion_service import get_conversion_service
+                svc = get_conversion_service()
+                if svc.ping():
+                    print("✅ SalesRLAgent (deepmost) subprocess ready")
+                else:
+                    print("⚠️  SalesRLAgent subprocess failed to start (conversion predictions disabled)")
+        except Exception as e:
+            print(f"⚠️  SalesRLAgent init skipped: {e}")
+
         print("\n✅ All systems ready")
         print("="*70)
         print("📡 API Documentation: http://localhost:8000/docs")
@@ -178,6 +191,18 @@ async def startup_event():
         print(f"\n❌ STARTUP FAILED: {e}")
         traceback.print_exc()
         print("="*70 + "\n")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Gracefully shut down background services."""
+    try:
+        from services.conversion_service import get_conversion_service
+        get_conversion_service().shutdown()
+        print("✅ SalesRLAgent subprocess stopped")
+    except Exception:
+        pass
+
 
 # Include routers that successfully imported
 print("\n" + "="*70)

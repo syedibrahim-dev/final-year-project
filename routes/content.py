@@ -16,7 +16,10 @@ from schemas.content import (
     RetrievalResult,
     ContentChunk,
     ContentDeleteResponse,
-    ContentStatsResponse
+    ContentStatsResponse,
+    URLScrapeRequest,
+    URLScrapeResponse,
+    MediaUploadResponse,
 )
 from rag.pipeline import RAGPipeline
 
@@ -296,6 +299,255 @@ def delete_content(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
+
+
+# ══════════════════════════════════════════════════════════════
+#  URL SCRAPING ENDPOINT
+# ══════════════════════════════════════════════════════════════
+
+@router.post("/scrape-url", response_model=URLScrapeResponse)
+async def scrape_url_content(
+    org_id: int,
+    request: URLScrapeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(role_required(["admin", "manager", "trainer"]))
+):
+    """Scrape a URL and ingest the text content into RAG"""
+    
+    print(f"\n{'='*60}")
+    print(f"🌐 URL SCRAPE REQUEST")
+    print(f"{'='*60}")
+    print(f"👤 User: {current_user.email} (ID: {current_user.id})")
+    print(f"🏢 Org ID: {org_id}")
+    print(f"🔗 URL: {request.url}")
+    print(f"{'='*60}\n")
+    
+    if current_user.organization_id != org_id:
+        raise HTTPException(status_code=403, detail="Access denied to this organization")
+    
+    try:
+        from services.url_scraper import scrape_url_to_file
+        
+        # Scrape the URL
+        print(f"🔄 Scraping URL...")
+        scrape_result = scrape_url_to_file(request.url)
+        
+        print(f"✅ Scraped {scrape_result['word_count']} words from {scrape_result['domain']}")
+        print(f"   Title: {scrape_result['title']}")
+        
+        # Generate content ID
+        content_id = f"url_{org_id}_{uuid.uuid4().hex[:8]}"
+        file_name = f"{scrape_result['domain']}_{Path(scrape_result['url']).name or 'page'}"
+        
+        # Ingest into RAG pipeline
+        print(f"🔄 Ingesting into RAG pipeline...")
+        rag_pipeline = get_rag_pipeline()
+        result = rag_pipeline.ingest_document(
+            file_path=scrape_result["file_path"],
+            content_id=content_id,
+            org_id=org_id,
+            metadata={
+                "file_name": file_name,
+                "version": request.version,
+                "uploader_id": current_user.id,
+                "source_type": "url",
+                "source_url": request.url,
+            }
+        )
+        
+        print(f"✅ RAG ingestion complete! {result['chunk_count']} chunks created")
+        
+        # Store in database
+        content = TrainingContent(
+            content_id=content_id,
+            file_name=file_name,
+            source_type="url",
+            source_url=request.url,
+            version=request.version,
+            page_count=0,
+            chunk_count=result["chunk_count"],
+            uploader_id=current_user.id,
+            organization_id=org_id,
+        )
+        db.add(content)
+        db.commit()
+        db.refresh(content)
+        
+        # Clean up temp file
+        try:
+            os.remove(scrape_result["file_path"])
+        except Exception:
+            pass
+        
+        print(f"\n{'='*60}")
+        print(f"✅ URL SCRAPE COMPLETE")
+        print(f"{'='*60}\n")
+        
+        return URLScrapeResponse(
+            content_id=content_id,
+            file_name=file_name,
+            source_type="url",
+            source_url=request.url,
+            version=request.version,
+            word_count=scrape_result["word_count"],
+            chunk_count=result["chunk_count"],
+            title=scrape_result["title"],
+            message=f"URL scraped and ingested successfully ({scrape_result['word_count']} words, {result['chunk_count']} chunks)",
+        )
+    
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        print(f"❌ URL scrape failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"URL scrape failed: {str(e)}")
+
+
+# ══════════════════════════════════════════════════════════════
+#  MEDIA UPLOAD / TRANSCRIPTION ENDPOINT
+# ══════════════════════════════════════════════════════════════
+
+@router.post("/upload-media", response_model=MediaUploadResponse)
+async def upload_media_content(
+    org_id: int,
+    file: UploadFile = File(...),
+    version: str = Form("1.0"),
+    language: str = Form("en"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(role_required(["admin", "manager", "trainer"]))
+):
+    """Upload and transcribe audio/video, then ingest transcript into RAG"""
+    
+    print(f"\n{'='*60}")
+    print(f"🎥 MEDIA UPLOAD REQUEST")
+    print(f"{'='*60}")
+    print(f"👤 User: {current_user.email} (ID: {current_user.id})")
+    print(f"🏢 Org ID: {org_id}")
+    print(f"📄 File: {file.filename}")
+    print(f"🌐 Language: {language}")
+    print(f"{'='*60}\n")
+    
+    if current_user.organization_id != org_id:
+        raise HTTPException(status_code=403, detail="Access denied to this organization")
+    
+    # Validate file type
+    allowed_extensions = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".wma",
+                          ".mp4", ".webm", ".mkv", ".avi", ".mov"}
+    ext = Path(file.filename).suffix.lower() if file.filename else ""
+    if ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type {ext} not supported. Supported: {', '.join(sorted(allowed_extensions))}"
+        )
+    
+    # Validate file size (100MB limit for media)
+    file_content = await file.read()
+    file_size = len(file_content)
+    max_size = 100 * 1024 * 1024  # 100MB
+    
+    if file_size > max_size:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File size {file_size} bytes exceeds maximum {max_size} bytes (100MB)"
+        )
+    
+    print(f"✅ File validation passed ({file_size / 1024 / 1024:.1f} MB)")
+    
+    try:
+        from services.media_transcriber import transcribe_to_file
+        
+        # Save uploaded file to temp
+        temp_dir = tempfile.gettempdir()
+        safe_filename = "".join(c for c in file.filename if c.isalnum() or c in "._- ")
+        media_temp_path = os.path.join(temp_dir, f"media_{safe_filename}")
+        
+        with open(media_temp_path, "wb") as f:
+            f.write(file_content)
+        
+        print(f"💾 Saved media to temp: {media_temp_path}")
+        
+        # Transcribe
+        print(f"🔄 Transcribing with Whisper (this may take a minute)...")
+        transcript_result = transcribe_to_file(
+            file_path=media_temp_path,
+            original_filename=file.filename,
+            model_size="base",
+            language=language if language != "auto" else None,
+        )
+        
+        print(f"✅ Transcription complete: {transcript_result['word_count']} words, {transcript_result['duration']:.0f}s")
+        
+        # Generate content ID
+        content_id = f"media_{org_id}_{uuid.uuid4().hex[:8]}"
+        
+        # Ingest transcript into RAG pipeline
+        print(f"🔄 Ingesting transcript into RAG pipeline...")
+        rag_pipeline = get_rag_pipeline()
+        result = rag_pipeline.ingest_document(
+            file_path=transcript_result["file_path"],
+            content_id=content_id,
+            org_id=org_id,
+            metadata={
+                "file_name": file.filename,
+                "version": version,
+                "uploader_id": current_user.id,
+                "source_type": "media",
+                "duration": transcript_result["duration"],
+                "language": transcript_result["language"],
+            }
+        )
+        
+        print(f"✅ RAG ingestion complete! {result['chunk_count']} chunks created")
+        
+        # Store in database
+        content = TrainingContent(
+            content_id=content_id,
+            file_name=file.filename,
+            source_type="media",
+            version=version,
+            page_count=0,
+            chunk_count=result["chunk_count"],
+            uploader_id=current_user.id,
+            organization_id=org_id,
+        )
+        db.add(content)
+        db.commit()
+        db.refresh(content)
+        
+        # Clean up temp files
+        for path in [media_temp_path, transcript_result.get("file_path")]:
+            try:
+                if path and os.path.exists(path):
+                    os.remove(path)
+            except Exception:
+                pass
+        
+        print(f"\n{'='*60}")
+        print(f"✅ MEDIA TRANSCRIPTION COMPLETE")
+        print(f"{'='*60}\n")
+        
+        return MediaUploadResponse(
+            content_id=content_id,
+            file_name=file.filename,
+            source_type="media",
+            version=version,
+            duration=transcript_result["duration"],
+            word_count=transcript_result["word_count"],
+            chunk_count=result["chunk_count"],
+            language=transcript_result["language"],
+            message=f"Media transcribed and ingested ({transcript_result['word_count']} words, {result['chunk_count']} chunks, {transcript_result['duration']:.0f}s audio)",
+        )
+    
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        print(f"❌ Media transcription failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Media transcription failed: {str(e)}")
 
 
 @router.get("/stats", response_model=ContentStatsResponse)

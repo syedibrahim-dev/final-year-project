@@ -77,3 +77,48 @@ htmlcov/
 # Include example env file for sharing
 !.env.txt
 
+# -----------------------------
+# Project-specific exclusions
+# -----------------------------
+
+# ChromaDB backups (old 384-dim vectors, kept locally for safety)
+chroma_data_384_backup/
+chroma_db_384_backup/
+
+# Demo / test output files
+demo_output.txt
+demo_output_clean.txt
+output.txt
+output.png
+ui.png
+
+# Research papers / external PDFs in repo root
+2503.23303v1.pdf
+
+# Claude Code cache
+.claude/
+
+# -----------------------------
+# ML training artifacts (too large for git)
+# -----------------------------
+# Trained model checkpoints (~56GB of DistilBERT/LSTM)
+training/models/
+# Raw training datasets (~460MB)
+training/data/
+# Training output plots
+training/plots/
+# Python cache
+training/__pycache__/
+
+# Test outputs (PNG/log) at repo root
+test_*.png
+test_*.log
+
+# DeepMost checkpoints if any
+*.pt
+*.bin
+*.safetensors
+*.ckpt
+*.h5
+!client/public/models/avatar.glb
+

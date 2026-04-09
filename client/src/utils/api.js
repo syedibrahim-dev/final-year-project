@@ -33,6 +33,11 @@ export const apiFetch = async (endpoint, method = 'POST', body = null, token = n
             const errorData = await response.json().catch(() => ({ detail: 'Request failed' }));
             throw new Error(errorData.detail || `HTTP ${response.status}`);
         }
+        // Return Blob for binary responses (audio, images, etc.)
+        const ct = response.headers.get('content-type') || '';
+        if (ct.startsWith('audio/') || ct.startsWith('application/octet-stream')) {
+            return await response.blob();
+        }
         return await response.json();
     } catch (error) {
         console.error("API Fetch Error:", error);
@@ -86,6 +91,22 @@ export const content = {
         }
         
         return apiFetch(`/orgs/${orgId}/content/upload`, 'POST', formData, token);
+    },
+
+    scrapeUrl: (orgId, url, version, token) => {
+        console.log('🌐 API Scrape URL:', { orgId, url, version });
+        return apiFetch(`/orgs/${orgId}/content/scrape-url`, 'POST', { url, version }, token);
+    },
+
+    uploadMedia: (orgId, file, version, language, token) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('version', version);
+        formData.append('language', language || 'en');
+        
+        console.log('🎥 API Upload Media:', { orgId, fileName: file.name, version, language });
+        
+        return apiFetch(`/orgs/${orgId}/content/upload-media`, 'POST', formData, token);
     },
 
     listContent: (orgId, token) =>

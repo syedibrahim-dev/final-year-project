@@ -12,19 +12,36 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     
-    # LLM Configuration
-    LOCAL_LLM_MODEL: str = "phi3:mini"  # Used for chatbot
+    # LLM Configuration — Q8_0 everywhere (22 GPU layers + 11 on 32GB RAM)
+    LOCAL_LLM_MODEL: str = "llama3.1:8b-instruct-q8_0"
     LOCAL_LLM_BASE_URL: str = "http://localhost:11434"
-    LOCAL_LLM_TEMPERATURE: float = 0.7  # Balanced for natural consistency
-    
+    LOCAL_LLM_TEMPERATURE: float = 0.7
+    LLM_NUM_GPU: int = 22  # 22/33 layers on GPU, rest spill to system RAM
+
     # MCQ-specific LLM
-    MCQ_LLM_MODEL: str = "llama3.2:3b-instruct-q4_K_M"
-    
+    MCQ_LLM_MODEL: str = "llama3.1:8b-instruct-q8_0"
+
     # Roleplay-specific LLM
-    ROLEPLAY_LLM_MODEL: str = "llama3.2:3b-instruct-q4_K_M"
-    
-    # Embedding Model
-    EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    ROLEPLAY_LLM_MODEL: str = "llama3.1:8b-instruct-q8_0"
+
+    # Post-session evaluation LLM (same model — no swap needed)
+    EVAL_LLM_MODEL: str = "llama3.1:8b-instruct-q8_0"
+    EVAL_NUM_GPU: int = 22
+
+    # Multi-Agent Configuration
+    ANALYST_LLM_MODEL: str = "llama3.1:8b-instruct-q8_0"
+    ANALYST_SKIP_INTERVAL: int = 1                 # Run analyst every turn (1 = every message)
+    ENABLE_ANALYST_AGENT: bool = True              # Toggle analyst agent on/off
+    ENABLE_COACHING_HINTS: bool = True             # Toggle coaching hints in UI
+
+    # SalesRLAgent Conversion Predictor (deepmost)
+    ENABLE_SALESRL_AGENT: bool = True              # Toggle real-time conversion prediction
+    SALESRL_LLM_MODEL: str = "llama3.1:8b-instruct-q8_0"  # Same model as roleplay — no GPU swap needed
+    SALESRL_PYTHON: str = r"D:\fyp-2026\venv311_deepmost\Scripts\python.exe"
+    SALESRL_PREDICT_INTERVAL: int = 1              # Run prediction every turn
+
+    # Embedding Model (Ollama-served; 768-dim, superior semantic understanding)
+    EMBEDDING_MODEL: str = "nomic-embed-text"
     
     # ChromaDB
     CHROMA_PERSIST_DIR: str = "./chroma_db"

@@ -14,7 +14,8 @@ TEMP_DIR.mkdir(exist_ok=True)
 LLM_CONFIG = {
     "model": "llama3.1:8b-instruct-q4_K_M",
     "temperature": 0.7,
-    "base_url": "http://localhost:11434"
+    "base_url": "http://localhost:11434",
+    "num_gpu": 24  # Partial GPU offloading for 6GB VRAM
 }
 
 # Embedding Configuration

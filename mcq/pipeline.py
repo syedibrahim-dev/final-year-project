@@ -224,11 +224,15 @@ class MCQPipeline:
         # Determine correct answer letter
         correct_letter = self._find_correct_letter(options)
         
+        # Build per-option misconception explanations
+        option_explanations = self._build_misconception_explanations(options)
+
         return {
             "question_text": stem_text,
             "options": options,
             "correct_answer": correct_letter,
             "explanation": explanation,
+            "option_explanations": option_explanations,
             "difficulty": difficulty,
             "topic": stem.get('topic', topic),
             "cognitive_level": stem.get('cognitive_level', 'understand'),
@@ -245,7 +249,8 @@ class MCQPipeline:
             model=settings.MCQ_LLM_MODEL,
             base_url=settings.LOCAL_LLM_BASE_URL,
             temperature=0.3,
-            num_ctx=4096
+            num_ctx=4096,
+            num_gpu=getattr(settings, 'LLM_NUM_GPU', 22)
         )
         
         prompt = f"""Based STRICTLY on the training material below, provide a SHORT and CONCISE answer.
@@ -383,10 +388,16 @@ Provide ONLY the specific answer (maximum 20 words):"""
             
             # ✅ Double-check not a duplicate
             if distractor_text.lower() not in used_texts:
-                options.append({
+                opt = {
                     "option_text": distractor_text,
-                    "is_correct": False
-                })
+                    "is_correct": False,
+                }
+                # Carry misconception metadata if available
+                if dist.get("why_wrong"):
+                    opt["why_wrong"] = dist["why_wrong"]
+                if dist.get("misconception_type"):
+                    opt["misconception_type"] = dist["misconception_type"]
+                options.append(opt)
                 used_texts.add(distractor_text.lower())
                 added_distractors += 1
         
@@ -489,20 +500,41 @@ Provide ONLY the specific answer (maximum 20 words):"""
         topic: str
     ) -> str:
         """Generate a simple explanation with proper context"""
-        
-        # ✅ Create contextual explanation instead of generic template
-        if len(correct_answer) < 10:
-            # Short answer - provide context
-            return f"According to the training material, the answer is '{correct_answer}'."
+
+        answer_preview = correct_answer[:150] + "..." if len(correct_answer) > 150 else correct_answer
+
+        if answer_preview.lower().startswith("according to"):
+            return answer_preview.capitalize()
         else:
-            # Longer answer - use it directly (remove duplicate prefix if present)
-            answer_preview = correct_answer[:150] + "..." if len(correct_answer) > 150 else correct_answer
-            
-            # ✅ Check if answer already starts with "According to"
-            if answer_preview.lower().startswith("according to"):
-                return answer_preview.capitalize()
-            else:
-                return f"According to the training material, {answer_preview}"
+            return f"According to the training material, {answer_preview}"
+
+    def _build_misconception_explanations(self, options: list) -> list:
+        """
+        Build per-option explanations showing which misconception each wrong
+        answer targets. Shown to the trainee after they answer.
+
+        Research: arXiv:2506.00612 (Knowledge-Guided Distractor Generation, 2025)
+        showed that explaining the specific misconception behind each wrong answer
+        significantly improves learning outcomes.
+        """
+        explanations = []
+        letters = ["A", "B", "C", "D"]
+        for i, opt in enumerate(options):
+            letter = letters[i] if i < len(letters) else "?"
+            if opt.get("is_correct"):
+                explanations.append({
+                    "option": letter,
+                    "correct": True,
+                    "explanation": "This is the correct answer based on the training material.",
+                })
+            elif opt.get("why_wrong"):
+                explanations.append({
+                    "option": letter,
+                    "correct": False,
+                    "misconception_type": opt.get("misconception_type", "unknown"),
+                    "explanation": opt["why_wrong"],
+                })
+        return explanations
     
     def validate_questions(self, questions: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Validate generated questions for quality"""

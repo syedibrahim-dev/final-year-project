@@ -10,7 +10,7 @@ from typing import Dict, Any, List, Tuple
 import re
 import math
 from langchain_community.llms import Ollama
-from langchain_community.embeddings import SentenceTransformerEmbeddings
+from langchain_community.embeddings import OllamaEmbeddings
 from config.settings import settings
 
 
@@ -32,9 +32,10 @@ class MCQValidator:
         self.relevance_threshold = relevance_threshold
         self.clarity_threshold = clarity_threshold
         
-        # Initialize embeddings for content relevance
-        self.embeddings = SentenceTransformerEmbeddings(
-            model_name=settings.EMBEDDING_MODEL
+        # Initialize embeddings for content relevance (Ollama-served nomic-embed-text)
+        self.embeddings = OllamaEmbeddings(
+            model=settings.EMBEDDING_MODEL,
+            base_url=settings.LOCAL_LLM_BASE_URL,
         )
         
         # Initialize LLM for answer correctness
@@ -42,7 +43,8 @@ class MCQValidator:
             model=settings.MCQ_LLM_MODEL,
             base_url=settings.LOCAL_LLM_BASE_URL,
             temperature=0.2,  # Lower temperature for more deterministic validation
-            num_ctx=4096
+            num_ctx=4096,
+            num_gpu=getattr(settings, 'LLM_NUM_GPU', 22)
         )
     
     def validate_complete(
