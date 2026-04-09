@@ -2,7 +2,8 @@
 Roleplay API Routes - AI Customer Persona Training
 Enhanced with: session history, analytics, user progress tracking
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import List, Dict, Any, Optional
@@ -26,6 +27,19 @@ class SessionStartRequest(BaseModel):
 
 class MessageRequest(BaseModel):
     message: str
+
+    @classmethod
+    def __get_validators__(cls):
+        yield from super().__get_validators__()
+
+    def __init__(self, **data):
+        if "message" in data:
+            data["message"] = data["message"].strip()
+            if len(data["message"]) < 1:
+                raise ValueError("Message cannot be empty")
+            if len(data["message"]) > 3000:
+                raise ValueError("Message too long (max 3000 characters)")
+        super().__init__(**data)
 
 
 # ===== Persona Endpoints =====
@@ -188,7 +202,15 @@ def send_message(
             "success": True,
             "trainee_message_id": result["trainee_message_id"],
             "ai_message_id": result["ai_message_id"],
-            "ai_response": result["response"]
+            "ai_response": result["response"],
+            "stage_info": result.get("stage_info"),
+            "coaching_hint": result.get("coaching_hint"),
+            "eq_data": result.get("eq_data"),
+            "accuracy_data": result.get("accuracy_data"),
+            "lstm_risk": result.get("lstm_risk"),
+            "conversion_data": result.get("conversion_data"),
+            "trained_models": result.get("trained_models"),
+            "deal_intelligence": result.get("deal_intelligence"),
         }
     except HTTPException:
         raise
@@ -200,6 +222,116 @@ def send_message(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to send message: {str(e)}"
         )
+
+
+@router.post("/sessions/{session_id}/voice-message")
+async def send_voice_message(
+    session_id: int,
+    audio: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Send a voice message: transcribe with Whisper, extract voice metrics,
+    then process through the same roleplay pipeline as text messages.
+    """
+    import tempfile, os
+
+    try:
+        session = roleplay_service.get_session(db, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if session.trainee_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        # Save uploaded audio to temp file
+        suffix = os.path.splitext(audio.filename or ".webm")[1]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            content = await audio.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        try:
+            # Transcribe + analyze voice
+            from services.voice_analytics import transcribe_audio
+            voice_result = transcribe_audio(tmp_path)
+        finally:
+            os.unlink(tmp_path)
+
+        transcribed_text = voice_result["text"]
+        if not transcribed_text or len(transcribed_text.strip()) < 2:
+            return {
+                "success": False,
+                "error": "Could not transcribe audio. Please speak clearly and try again.",
+                "voice_metrics": voice_result.get("metrics"),
+            }
+
+        # Process through standard roleplay pipeline
+        result = roleplay_service.generate_ai_response(
+            db=db,
+            session_id=session_id,
+            trainee_message=transcribed_text
+        )
+
+        return {
+            "success": True,
+            "trainee_message_id": result["trainee_message_id"],
+            "ai_message_id": result["ai_message_id"],
+            "ai_response": result["response"],
+            "transcribed_text": transcribed_text,
+            "voice_metrics": voice_result["metrics"],
+            "voice_coaching": voice_result["coaching"],
+            "stage_info": result.get("stage_info"),
+            "coaching_hint": result.get("coaching_hint"),
+            "eq_data": result.get("eq_data"),
+            "accuracy_data": result.get("accuracy_data"),
+            "lstm_risk": result.get("lstm_risk"),
+            "conversion_data": result.get("conversion_data"),
+            "trained_models": result.get("trained_models"),
+            "deal_intelligence": result.get("deal_intelligence"),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in voice message: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Voice processing failed: {str(e)}")
+
+
+class TTSRequest(BaseModel):
+    text: str
+    voice: Optional[str] = None   # "female", "male", preset key, or full voice name
+    rate: Optional[str] = "+0%"   # speed adjustment: "-10%", "+5%", etc.
+
+
+@router.post("/tts")
+def text_to_speech(
+    req: TTSRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generate natural-sounding speech from text using Edge TTS (Microsoft Neural).
+    Returns MP3 audio bytes.
+    """
+    from services.tts_service import synthesize_speech
+
+    if not req.text or len(req.text.strip()) < 1:
+        raise HTTPException(status_code=400, detail="Text is required")
+
+    try:
+        audio_bytes = synthesize_speech(
+            text=req.text,
+            voice_hint=req.voice,
+            rate=req.rate or "+0%",
+        )
+        return Response(
+            content=audio_bytes,
+            media_type="audio/mpeg",
+            headers={"Content-Disposition": "inline; filename=tts.mp3"},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"TTS failed: {str(e)}")
 
 
 @router.get("/sessions/{session_id}/messages")
@@ -493,6 +625,10 @@ def get_session_evaluation(
             "improvement_areas": evaluation.improvement_areas,
             "coaching_tip": evaluation.detailed_feedback.get('coaching_tip', '') if evaluation.detailed_feedback else '',
             "category_feedback": evaluation.detailed_feedback.get('category_feedback', {}) if evaluation.detailed_feedback else {},
+            "stage_performance": evaluation.detailed_feedback.get('stage_performance', {}) if evaluation.detailed_feedback else {},
+            "missed_opportunities": evaluation.detailed_feedback.get('missed_opportunities', []) if evaluation.detailed_feedback else [],
+            "eq_summary": evaluation.detailed_feedback.get('eq_summary', {}) if evaluation.detailed_feedback else {},
+            "replay": evaluation.detailed_feedback.get('replay', {}) if evaluation.detailed_feedback else {},
             "evaluated_at": evaluation.created_at.isoformat()
         }
     except HTTPException:

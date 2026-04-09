@@ -244,6 +244,18 @@ async def startup_event():
         traceback.print_exc()
         print("="*70 + "\n")
 
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Gracefully shut down background services."""
+    try:
+        from services.conversion_service import get_conversion_service
+        get_conversion_service().shutdown()
+        print("✅ SalesRLAgent subprocess stopped")
+    except Exception:
+        pass
+
+
 # Include routers that successfully imported
 print("\n" + "="*70)
 print("🔌 REGISTERING API ROUTES")

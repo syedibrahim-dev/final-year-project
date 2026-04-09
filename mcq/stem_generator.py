@@ -20,7 +20,8 @@ class StemGenerator:
             model=settings.MCQ_LLM_MODEL,
             base_url=settings.LOCAL_LLM_BASE_URL,
             temperature=0.7,
-            num_ctx=4096
+            num_ctx=4096,
+            num_gpu=getattr(settings, 'LLM_NUM_GPU', 22)
         )
     
     def generate_stems(
@@ -151,11 +152,11 @@ Before generating each question, you MUST identify the specific text snippet fro
 - ✅ Ask about relationships, processes, technical details
 - ❌ DO NOT ask about section numbers or document structure
 
-**Generate {num_needed} DIVERSE questions (JSON format):**
+**Generate {num_needed} DIVERSE questions (JSON format).**
+Each question MUST have a cognitive_level matching the difficulty instructions above.
+
 [
-  {{"stem_text": "Different question 1?", "cognitive_level": "remember"}},
-  {{"stem_text": "Different question 2?", "cognitive_level": "understand"}},
-  {{"stem_text": "Different question 3?", "cognitive_level": "apply"}}
+  {{"stem_text": "Specific question targeting a different concept?", "cognitive_level": "<level from instructions above>", "key_concept": "<2-3 word concept tested>"}}
 ]
 
 JSON only:"""
@@ -399,27 +400,67 @@ JSON only:"""
             return 'remember'
     
     def _get_difficulty_instructions(self, difficulty: str) -> str:
-        """Get difficulty-specific instructions"""
-        
+        """
+        Get difficulty instructions mapped to Bloom's Taxonomy levels.
+
+        Research: Elkins et al. (2024, arXiv:2408.04394) found LLMs generate
+        higher-quality questions when prompted with explicit Bloom level
+        definitions and examples. Without them, LLMs default to recall-level.
+        """
+
         if difficulty == "easy":
-            return """**EASY QUESTIONS - Focus on:**
-- Basic definitions and facts
-- Simple recall
-- Question starters: "What is...", "What are...", "Define...", "List..."
+            return """**EASY — Bloom's Level: REMEMBER + UNDERSTAND**
+Target: Factual recall and basic comprehension of stated information.
+
+Bloom's REMEMBER = retrieve specific facts, terms, or definitions from the text.
+Bloom's UNDERSTAND = explain or paraphrase what the text says in different words.
+
+Question patterns:
+- "What is the [specific metric/feature] mentioned in the material?" (REMEMBER)
+- "What does [term] refer to according to the text?" (REMEMBER)
+- "Which [category] does [X] belong to?" (UNDERSTAND)
+- "What is the purpose of [feature] as described?" (UNDERSTAND)
+
+IMPORTANT: Every answer must be a DIRECTLY STATED fact from the text.
+Set cognitive_level to "remember" or "understand".
 """
-        
+
         elif difficulty == "medium":
-            return """**MEDIUM QUESTIONS - Focus on:**
-- Concepts and relationships
-- Understanding and application
-- Question starters: "How does...", "Why is...", "What happens when...", "How do you..."
+            return """**MEDIUM — Bloom's Level: APPLY + ANALYZE**
+Target: Using information in new contexts and breaking down relationships.
+
+Bloom's APPLY = use a stated fact/rule to solve a specific scenario.
+Bloom's ANALYZE = identify relationships, compare components, find cause-effect.
+
+Question patterns:
+- "How would [feature] help a company that [specific scenario]?" (APPLY)
+- "If a company has [constraint], which [plan/option] would be most suitable?" (APPLY)
+- "What is the relationship between [X] and [Y] in the system?" (ANALYZE)
+- "Why does [feature] lead to [outcome] according to the material?" (ANALYZE)
+- "How does [metric A] compare to [metric B]?" (ANALYZE)
+
+IMPORTANT: The answer must be derivable from stated facts, but the question
+should require the reader to THINK, not just recall.
+Set cognitive_level to "apply" or "analyze".
 """
-        
+
         else:  # hard
-            return """**HARD QUESTIONS - Focus on:**
-- Analysis and evaluation
-- Critical thinking
-- Question starters: "How would you...", "Compare...", "What factors...", "Evaluate..."
+            return """**HARD — Bloom's Level: EVALUATE + CREATE**
+Target: Making judgments, defending positions, synthesizing across sections.
+
+Bloom's EVALUATE = judge effectiveness, compare trade-offs, assess suitability.
+Bloom's CREATE = combine information from multiple parts of the text to form a conclusion.
+
+Question patterns:
+- "Which limitation would be most critical for [specific use case]?" (EVALUATE)
+- "What trade-off does a company face when choosing [X] over [Y]?" (EVALUATE)
+- "Based on the pricing and features, which plan offers the best value for [scenario]?" (EVALUATE)
+- "Considering both the strengths and limitations, how suitable is [product] for [context]?" (EVALUATE)
+- "What conclusion can be drawn by combining [fact A] with [fact B]?" (CREATE)
+
+IMPORTANT: Questions must require synthesizing multiple facts from the text,
+not just recalling a single data point.
+Set cognitive_level to "evaluate" or "create".
 """
     
     def _extract_json_from_response(self, response: str) -> List[Dict[str, Any]]:

@@ -10,12 +10,12 @@ from typing import List, Dict, Any
 
 class QuestionAnalyzer:
     """Analyze questions in trainee messages"""
-    
+
     # Question patterns
     WH_WORDS = r'\b(what|how|why|when|where|who|which|whose)\b'
     OPEN_INDICATORS = r'\b(tell me|walk me through|explain|describe|share|talk about|help me understand)\b'
     CLOSED_INDICATORS = r'\b(do you|are you|is it|can you|will you|would you|have you|did you|has it|does it)\b'
-    
+
     # Follow-up question patterns (shows active listening)
     FOLLOW_UP_PATTERNS = [
         r"you mentioned.*\?",
@@ -26,26 +26,56 @@ class QuestionAnalyzer:
         r"could you give.*example.*\?",
         r"interesting.*\?"
     ]
+
+    # SPIN Selling question classification (Rackham, 1988)
+    SPIN_PATTERNS = {
+        "situation": [
+            r'\b(what|how) (do|does|is|are) (your|the|you)\b',  # "What is your current..."
+            r'\b(currently|right now|at the moment)\b.*\?',
+            r'\b(how many|how much|how long|how often)\b.*\?',
+            r'\b(using|use|have|running)\b.*\?',
+        ],
+        "problem": [
+            r'\b(challenge|problem|issue|difficulty|struggle|pain|frustrat|concern|worry)\b.*\?',
+            r'\b(what.*(wrong|difficult|challenging|hard))\b.*\?',
+            r'\b(any (issues|problems|concerns|challenges))\b',
+        ],
+        "implication": [
+            r'\b(what happens|what would happen|if .* (don.t|doesn.t|can.t))\b.*\?',
+            r'\b(impact|affect|consequence|cost of not|risk)\b.*\?',
+            r'\b(how (does|would) that (affect|impact|cost))\b',
+            r'\b(what does that mean for)\b',
+        ],
+        "need_payoff": [
+            r'\b(would it help|how (would|could) .* (help|benefit|improve|solve))\b',
+            r'\b(what if (you|we) could)\b',
+            r'\b(imagine|picture|think about|envision)\b.*\?',
+            r'\b(value|worth|benefit|advantage)\b.*\b(to you|for you|for your)\b.*\?',
+        ],
+    }
     
     def analyze_questions(self, trainee_messages: List[str]) -> Dict[str, Any]:
         """
-        Analyze question quality, quantity, and follow-up behavior.
+        Analyze question quality, quantity, follow-up behavior, and SPIN classification.
         Normalized by conversation length.
         """
         total_q = 0
         open_q = 0
         closed_q = 0
         follow_up_q = 0
-        
+
+        # SPIN question counts
+        spin_counts = {"situation": 0, "problem": 0, "implication": 0, "need_payoff": 0}
+
         for msg in trainee_messages:
             if '?' in msg:
                 total_q += 1
                 msg_lower = msg.lower()
-                
+
                 # Check for follow-up patterns
                 if any(re.search(pattern, msg_lower) for pattern in self.FOLLOW_UP_PATTERNS):
                     follow_up_q += 1
-                
+
                 # Classify question type
                 if (re.search(self.WH_WORDS, msg_lower, re.IGNORECASE) or
                     re.search(self.OPEN_INDICATORS, msg_lower, re.IGNORECASE)):
@@ -54,14 +84,17 @@ class QuestionAnalyzer:
                     closed_q += 1
                 else:
                     open_q += 1  # Default to open
-        
+
+                # SPIN classification — assign to highest-value matching category
+                self._classify_spin(msg_lower, spin_counts)
+
         num_messages = max(1, len(trainee_messages))
         question_rate = total_q / num_messages  # Questions per message
         open_ratio = open_q / total_q if total_q > 0 else 0
-        
+
         # Scoring logic (0-20 scale) - normalized by conversation length
         score = 0
-        
+
         # Quantity score (max 8 points) - rate-based instead of absolute
         if question_rate >= 0.5:
             score += 8
@@ -71,7 +104,7 @@ class QuestionAnalyzer:
             score += 4
         elif question_rate > 0:
             score += 2
-        
+
         # Quality score (max 8 points) - open question ratio
         if open_ratio >= 0.75:
             score += 8
@@ -81,7 +114,7 @@ class QuestionAnalyzer:
             score += 4
         elif open_ratio > 0:
             score += 2
-        
+
         # Follow-up bonus (max 4 points) - shows active listening
         if follow_up_q >= 3:
             score += 4
@@ -89,7 +122,16 @@ class QuestionAnalyzer:
             score += 3
         elif follow_up_q >= 1:
             score += 2
-        
+
+        # Build SPIN analysis
+        spin_analysis = {
+            "situation": spin_counts["situation"],
+            "problem": spin_counts["problem"],
+            "implication": spin_counts["implication"],
+            "need_payoff": spin_counts["need_payoff"],
+            "spin_quality": self._assess_spin_quality(spin_counts)
+        }
+
         return {
             "total_questions": total_q,
             "open_questions": open_q,
@@ -97,9 +139,39 @@ class QuestionAnalyzer:
             "follow_up_questions": follow_up_q,
             "question_rate": round(question_rate, 2),
             "open_ratio": round(open_ratio, 2),
+            "spin_analysis": spin_analysis,
             "score": min(20, score),
             "interpretation": self._interpret_score(total_q, open_ratio, follow_up_q)
         }
+
+    def _classify_spin(self, msg_lower: str, spin_counts: Dict[str, int]) -> None:
+        """Classify a question into the highest-value SPIN category that matches."""
+        # Check in reverse priority order so higher-value categories win
+        # Priority: need_payoff > implication > problem > situation
+        priority_order = ["need_payoff", "implication", "problem", "situation"]
+        for category in priority_order:
+            patterns = self.SPIN_PATTERNS[category]
+            if any(re.search(pattern, msg_lower) for pattern in patterns):
+                spin_counts[category] += 1
+                return  # Only count in highest-priority matching category
+
+    def _assess_spin_quality(self, counts: Dict[str, int]) -> str:
+        """Assess SPIN question usage quality."""
+        total_spin = sum(counts.values())
+        if total_spin == 0:
+            return "Questions lack SPIN structure — try sequencing: Situation -> Problem -> Implication -> Need-Payoff"
+
+        if counts["implication"] + counts["need_payoff"] >= 2:
+            return "Strong SPIN technique — using implication and need-payoff questions to build urgency"
+
+        if counts["problem"] >= 1 and counts["implication"] == 0:
+            return "Good problem identification but missing implication questions — ask 'what happens if this isn't fixed?'"
+
+        # Mostly situation questions
+        if counts["situation"] >= total_spin * 0.6:
+            return "Too many situation questions — move to problem and implication questions sooner"
+
+        return "Questions lack SPIN structure — try sequencing: Situation -> Problem -> Implication -> Need-Payoff"
     
     def _interpret_score(self, total: int, ratio: float, follow_ups: int) -> str:
         if total >= 5 and ratio >= 0.7 and follow_ups >= 2:
@@ -279,33 +351,44 @@ class SalesFlowAnalyzer:
 
 class ConversationDynamicsAnalyzer:
     """Analyze conversation balance and flow"""
-    
+
+    # Gong Labs research: top performers have ~43% seller talk time (43:57 ratio)
+    MONOLOGUE_WORD_LIMIT = 120  # Gong Labs: long monologues are negative predictors of deal success
+
     def analyze_dynamics(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
         """
         Calculate speaking patterns, balance, and engagement.
-        Enhanced with message count normalization.
+        Enhanced with message count normalization, Gong Labs talk ratio, and monologue tracking.
         """
         trainee_msgs = [m for m in messages if m['sender'] == 'trainee']
         customer_msgs = [m for m in messages if m['sender'] == 'ai_customer']
-        
+
         if not trainee_msgs or not customer_msgs:
             return {
                 "trainee_speaking_ratio": 0.0,
                 "score": 0,
-                "interpretation": "Insufficient conversation data"
+                "interpretation": "Insufficient conversation data",
+                "talk_ratio_assessment": "Insufficient data",
+                "longest_monologue_words": 0,
+                "monologue_penalty": 0
             }
-        
+
         # Word counts
         trainee_words = sum(len(m['text'].split()) for m in trainee_msgs)
         customer_words = sum(len(m['text'].split()) for m in customer_msgs)
         total_words = trainee_words + customer_words
-        
+
         speaking_ratio = trainee_words / total_words if total_words > 0 else 0
-        
+
         # Average message lengths
         avg_trainee_len = trainee_words / len(trainee_msgs)
         avg_customer_len = customer_words / len(customer_msgs)
-        
+
+        # Longest monologue tracking (Gong Labs: negative predictor of success)
+        trainee_msg_lengths = [len(m['text'].split()) for m in trainee_msgs]
+        longest_monologue_words = max(trainee_msg_lengths) if trainee_msg_lengths else 0
+        monologue_penalty = -2 if longest_monologue_words > self.MONOLOGUE_WORD_LIMIT else 0
+
         # Message count check - penalize very short conversations
         turn_count = len(messages)
         length_penalty = 0
@@ -313,47 +396,69 @@ class ConversationDynamicsAnalyzer:
             length_penalty = 4  # Significant penalty for very short conversations
         elif turn_count < 10:
             length_penalty = 2  # Mild penalty
-        
+
         # Scoring based on balance (0-20 scale)
+        # Shifted toward Gong Labs optimal: 43% seller talk time (43:57 ratio)
         score = 0
-        if 0.45 <= speaking_ratio <= 0.55:
-            score = 20
-        elif 0.40 <= speaking_ratio <= 0.60:
-            score = 17
-        elif 0.35 <= speaking_ratio <= 0.65:
-            score = 14
-        elif 0.30 <= speaking_ratio <= 0.70:
+        if 0.40 <= speaking_ratio <= 0.50:
+            score = 20  # Best: trainee talks 40-50%, Gong optimal is 43%
+        elif 0.35 <= speaking_ratio <= 0.55:
+            score = 17  # Good
+        elif 0.30 <= speaking_ratio <= 0.60:
+            score = 14  # Acceptable
+        elif 0.25 <= speaking_ratio <= 0.65:
             score = 10
         else:
             score = 6
-        
+
         # Apply length penalty
         score = max(0, score - length_penalty)
-        
+
+        # Apply monologue penalty
+        score = max(0, score + monologue_penalty)
+
         # Engagement bonus: good average message length (15-40 words)
         if 15 <= avg_trainee_len <= 40:
             score = min(20, score + 2)
-        
+
+        # Talk ratio assessment (Gong Labs research-referenced)
+        talk_ratio_assessment = self._assess_talk_ratio(speaking_ratio)
+
         return {
             "trainee_speaking_ratio": round(speaking_ratio, 2),
             "avg_trainee_length": round(avg_trainee_len, 1),
             "avg_customer_length": round(avg_customer_len, 1),
             "turn_count": turn_count,
             "trainee_turns": len(trainee_msgs),
+            "longest_monologue_words": longest_monologue_words,
+            "monologue_penalty": monologue_penalty,
+            "talk_ratio_assessment": talk_ratio_assessment,
             "score": score,
             "interpretation": self._interpret_balance(speaking_ratio, turn_count)
         }
-    
+
+    def _assess_talk_ratio(self, ratio: float) -> str:
+        """Assess talk ratio against Gong Labs research (optimal: 43% seller talk time)."""
+        pct = round(ratio * 100)
+        if 0.40 <= ratio <= 0.50:
+            return "Optimal range (research shows 43-57% seller talk time correlates with highest win rates)"
+        elif ratio > 0.50:
+            return f"Talking too much — top performers talk 43% of the time, you're at {pct}%"
+        elif 0.35 <= ratio < 0.40:
+            return f"Slightly passive — aim for 40-50% talk time (you're at {pct}%)"
+        else:
+            return f"Too passive — aim for 40-50% talk time (you're at {pct}%)"
+
     def _interpret_balance(self, ratio: float, turns: int) -> str:
         if turns < 6:
             return "Conversation too short for meaningful balance analysis"
-        if 0.45 <= ratio <= 0.55:
-            return "Excellent balance - active listening"
-        elif 0.40 <= ratio <= 0.60:
+        if 0.40 <= ratio <= 0.50:
+            return "Excellent balance - aligned with research-backed optimal ratio"
+        elif 0.35 <= ratio <= 0.55:
             return "Good conversational balance"
-        elif ratio > 0.60:
+        elif ratio > 0.55:
             return "Speaking too much - practice listening more"
-        elif ratio < 0.40:
+        elif ratio < 0.35:
             return "Too passive - engage more actively"
         else:
             return "Acceptable balance"

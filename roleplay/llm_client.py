@@ -10,17 +10,31 @@ import json
 
 class OllamaClient:
     """Client for direct Ollama API calls"""
-    
+
     def __init__(
         self,
         base_url: str = None,
         model: str = None,
-        temperature: float = None
+        temperature: float = None,
+        num_gpu: int = None,
     ):
         self.base_url = base_url or settings.LOCAL_LLM_BASE_URL
         self.model = model or getattr(settings, 'ROLEPLAY_LLM_MODEL', settings.LOCAL_LLM_MODEL)
         self.temperature = temperature or settings.LOCAL_LLM_TEMPERATURE
+        self.num_gpu = num_gpu if num_gpu is not None else getattr(settings, 'LLM_NUM_GPU', 99)
         self.chat_endpoint = f"{self.base_url}/api/chat"
+
+    def unload_model(self, model_name: str = None):
+        """Unload a model from VRAM to free space for another."""
+        target = model_name or self.model
+        try:
+            requests.post(
+                f"{self.base_url}/api/generate",
+                json={"model": target, "keep_alive": 0},
+                timeout=10,
+            )
+        except Exception:
+            pass  # Best-effort — model may already be unloaded
     
     def generate_response(
         self,
@@ -50,7 +64,8 @@ class OllamaClient:
             "stream": False,
             "options": {
                 "temperature": self.temperature,
-                "num_predict": max_tokens
+                "num_predict": max_tokens,
+                "num_gpu": self.num_gpu
             }
         }
         
@@ -99,7 +114,8 @@ class OllamaClient:
             "stream": True,
             "options": {
                 "temperature": self.temperature,
-                "num_predict": max_tokens
+                "num_predict": max_tokens,
+                "num_gpu": self.num_gpu
             }
         }
         
