@@ -122,3 +122,11 @@ test_*.log
 *.h5
 !client/public/models/avatar.glb
 
+# Conversion model artifacts (~10MB, regeneratable)
+conversion/data/
+conversion/models/
+conversion/__pycache__/
+
+# Python pycache anywhere in conversion
+*.pkl
+
