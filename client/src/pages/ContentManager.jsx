@@ -27,9 +27,25 @@ const ContentItem = ({ contentItem, onDelete, deleteState }) => {
             }`}
         >
             <div className="flex-1">
-                <p className="font-semibold text-gray-800 flex items-center">
-                    <FileText size={16} className="mr-2 text-indigo-500 flex-shrink-0"/>
+                <p className="font-semibold text-gray-800 flex items-center flex-wrap gap-2">
+                    <FileText size={16} className="text-indigo-500 flex-shrink-0"/>
                     <span className="break-all">{contentItem.file_name}</span>
+                    {/* Source type badge */}
+                    {contentItem.source_type === 'url' && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                            🌐 URL
+                        </span>
+                    )}
+                    {contentItem.source_type === 'media' && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                            🎥 Media
+                        </span>
+                    )}
+                    {(!contentItem.source_type || contentItem.source_type === 'document') && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                            📄 Document
+                        </span>
+                    )}
                 </p>
                 
                 <div className="text-xs text-gray-500 mt-2 space-y-1 sm:ml-8">
@@ -38,6 +54,14 @@ const ContentItem = ({ contentItem, onDelete, deleteState }) => {
                         📄 <strong>Pages:</strong> {contentItem.page_count || 'N/A'} |
                         📝 <strong>Version:</strong> {contentItem.version || '1.0'}
                     </p>
+                    {contentItem.source_url && (
+                        <p>
+                            🔗 <strong>Source:</strong>{' '}
+                            <a href={contentItem.source_url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
+                                {contentItem.source_url.length > 60 ? contentItem.source_url.substring(0, 60) + '...' : contentItem.source_url}
+                            </a>
+                        </p>
+                    )}
                     <p>
                         📅 <strong>Uploaded:</strong> {new Date(contentItem.upload_date).toLocaleString()}
                     </p>
@@ -257,7 +281,7 @@ function ContentManagerView({ orgId, token }) {
             </div>
             
             <p className="mb-6 text-gray-600">
-                View, manage, and delete uploaded documents. Deleting a document removes it and all its chunks from the knowledge base.
+                View, manage, and delete your knowledge sources. Supports documents, scraped URLs, and transcribed audio/video.
             </p>
             
             {/* Loading State */}
@@ -292,13 +316,13 @@ function ContentManagerView({ orgId, token }) {
                 <div className="text-gray-500 p-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 text-center">
                     <FileText size={48} className="text-gray-400 mx-auto mb-3" />
                     <p className="text-lg font-medium text-gray-700 mb-2">
-                        No training documents yet
+                        No knowledge sources yet
                     </p>
                     <p>
-                        Upload training materials to build your knowledge base.
+                        Add training materials from documents, websites, or audio/video.
                     </p>
                     <p className="mt-2">
-                        Go to <strong className="text-indigo-600">"Upload Content"</strong> to get started.
+                        Go to <strong className="text-indigo-600">"Add Knowledge Sources"</strong> to get started.
                     </p>
                 </div>
             )}

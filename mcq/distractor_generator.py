@@ -17,7 +17,8 @@ class DistractorGenerator:
         self.llm = Ollama(
             model=settings.MCQ_LLM_MODEL,
             base_url=settings.LOCAL_LLM_BASE_URL,
-            temperature=0.6  # Balanced: diverse but coherent
+            temperature=0.6,  # Balanced: diverse but coherent
+            num_gpu=getattr(settings, 'LLM_NUM_GPU', 22)
         )
     
     def generate_distractors_simple(
@@ -152,6 +153,10 @@ class DistractorGenerator:
         """Create prompt for distractor generation with external knowledge allowed"""
         
         return f"""You are an expert at creating plausible but INCORRECT answers for quiz questions.
+Your goal: each wrong answer should target a SPECIFIC MISCONCEPTION that a trainee
+might genuinely hold. This is based on research showing misconception-targeted
+distractors are significantly more effective at identifying knowledge gaps
+(arXiv:2506.00612, Knowledge-Guided Distractor Generation, 2025).
 
 **Question:**
 {stem}
@@ -162,57 +167,51 @@ class DistractorGenerator:
 **Context:**
 {context[:500]}...
 
-**Task:** Generate {num_distractors} plausible WRONG answers (distractors).
+**Task:** Generate {num_distractors} plausible WRONG answers. Each MUST target a
+different misconception from the list below.
 
-**✅ ALLOWED STRATEGIES (Use external knowledge to create challenging distractors):**
-1. **Common Misconceptions**: Use typical misunderstandings from the domain
-2. **Industry Standards**: Reference Salesforce, AWS, Azure, or other platform practices
-3. **Standard Business Practices**: Use common contract terms, payment models, or workflows
-4. **Similar Technologies**: Confuse with related products, services, or methodologies
-5. **Partial Knowledge**: Combine correct concepts in incorrect ways
-6. **Outdated Approaches**: Reference older or deprecated practices
-7. **Over-Generalization**: Apply rules from other contexts incorrectly
+**MISCONCEPTION CATEGORIES (use exactly one per distractor):**
+1. **confused_metric** — Swaps a specific number/stat with a plausible but wrong one
+   (e.g., correct is "99.7%" → distractor uses "99.9%" or "97%")
+2. **wrong_scope** — Applies a real fact to the wrong context
+   (e.g., a feature that exists in Enterprise plan attributed to Starter plan)
+3. **partial_truth** — Combines a correct concept with an incorrect detail
+   (e.g., "Auto-renewal with 99.7% success rate and zero configuration" — the rate is right but the rest is wrong)
+4. **competitor_confusion** — Attributes a competitor's feature or practice to this product
+   (e.g., confuses with Venafi, DigiCert, or general industry tools)
+5. **overgeneralization** — Takes a specific, limited capability and claims it's universal
+   (e.g., "works with all operating systems" when it only supports specific ones)
+6. **outdated_practice** — References an older approach that seems plausible but isn't what the text says
 
 **CRITICAL RULES:**
-1. Distractors MUST be DIFFERENT from the correct answer
-2. Distractors MUST be plausibly INCORRECT (believable but wrong)
+1. Each distractor MUST target a DIFFERENT misconception category
+2. Distractors MUST be plausible — a real trainee could believe them
 3. DO NOT repeat or paraphrase the correct answer
-4. Make distractors challenging - use real-world alternatives
-5. Keep distractors similar length to correct answer
+4. Keep distractors similar length to correct answer
+5. The "why_wrong" field MUST explain what specific misconception the trainee holds if they pick this
 
-**EXAMPLES OF GOOD DISTRACTORS:**
-- If correct answer is "Net 30", distractors could be:
-  • "Payment due upon completion with 50% deposit" (standard practice)
-  • "Net 60 with early payment discount" (common alternative)
-  • "Milestone-based payment schedule" (industry standard)
-
-- If correct answer is "XYZ Smart-Throttling", distractors could be:
-  • "Salesforce API Governor Limits" (platform-specific)
-  • "AWS Lambda Concurrency Controls" (cloud standard)
-  • "Rate limiting using Redis cache" (technical alternative)
-
-**Output Format (JSON ONLY - no explanations):**
+**Output Format (JSON ONLY):**
 {{
   "distractors": [
     {{
-      "text": "First plausible wrong answer using external knowledge",
-      "plausibility_score": 0.7,
-      "misconception_type": "industry_standard"
+      "text": "Plausible wrong answer targeting a specific misconception",
+      "misconception_type": "confused_metric",
+      "why_wrong": "Confuses the 99.7% renewal rate with a 99.9% uptime SLA — these are different metrics"
     }},
     {{
-      "text": "Second plausible wrong answer using common practices",
-      "plausibility_score": 0.8,
-      "misconception_type": "platform_specific"
+      "text": "Another wrong answer targeting different misconception",
+      "misconception_type": "wrong_scope",
+      "why_wrong": "This feature is only available in Enterprise plan, not Starter"
     }},
     {{
-      "text": "Third plausible wrong answer using misconception",
-      "plausibility_score": 0.6,
-      "misconception_type": "partial_knowledge"
+      "text": "Third wrong answer targeting yet another misconception",
+      "misconception_type": "competitor_confusion",
+      "why_wrong": "This is how Venafi works, not CloudVault — confuses the two vendors"
     }}
   ]
 }}
 
-Generate the JSON now (WRONG answers only):"""
+Generate the JSON now (WRONG answers only — start with {{):"""
     
     def _parse_distractor_response(self, response: str) -> List[Dict[str, Any]]:
         """Parse LLM response and extract distractors with robust JSON extraction"""

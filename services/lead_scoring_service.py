@@ -8,9 +8,67 @@ a DataFrame and get probabilities back.
 
 import os
 import pickle
+import warnings
 import pandas as pd
 import numpy as np
 from typing import Optional
+
+# Silence sklearn's "trained on older version" warning — we handle the version
+# delta explicitly via the compat shims below (_RemainderColsList stub +
+# SimpleImputer._fill_dtype reconstruction). The warning is purely informational.
+try:
+    from sklearn.exceptions import InconsistentVersionWarning
+    warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
+except ImportError:
+    pass
+
+# ── sklearn compat shim ────────────────────────────────────────────────
+# The lead_scorer_pipeline.pkl was trained with sklearn 1.6.x. Two
+# incompatibilities exist when loading on sklearn 1.7+:
+#
+# 1. ColumnTransformer used a private `_RemainderColsList` (list subclass)
+#    that was removed in 1.7+. Pickle can't resolve the class. Fix: register
+#    a plain `list` subclass with the same name in the original module path.
+#
+# 2. SimpleImputer in 1.7+ uses an internal `_fill_dtype` attribute (set
+#    during fit). Old pickles don't have it, causing AttributeError on
+#    transform. Fix: walk the loaded pipeline and reconstruct it from
+#    `statistics_.dtype`, which is what sklearn would have set anyway.
+try:
+    import sklearn.compose._column_transformer as _ct
+    if not hasattr(_ct, "_RemainderColsList"):
+        class _RemainderColsList(list):
+            pass
+        _ct._RemainderColsList = _RemainderColsList
+except Exception:
+    pass
+
+
+def _patch_legacy_sklearn_objects(obj, _seen=None):
+    """Recursively patch missing internal attributes on legacy sklearn objects."""
+    if _seen is None:
+        _seen = set()
+    if id(obj) in _seen:
+        return
+    _seen.add(id(obj))
+
+    cls_name = type(obj).__name__
+    if cls_name == "SimpleImputer" and hasattr(obj, "statistics_") and not hasattr(obj, "_fill_dtype"):
+        try:
+            obj._fill_dtype = obj.statistics_.dtype
+        except Exception:
+            obj._fill_dtype = np.dtype("O")
+
+    if hasattr(obj, "__dict__"):
+        for v in list(obj.__dict__.values()):
+            _patch_legacy_sklearn_objects(v, _seen)
+    if isinstance(obj, (list, tuple)):
+        for item in obj:
+            _patch_legacy_sklearn_objects(item, _seen)
+    if isinstance(obj, dict):
+        for item in obj.values():
+            _patch_legacy_sklearn_objects(item, _seen)
+# ──────────────────────────────────────────────────────────────────────
 
 # Features the model was trained on
 MODEL_FEATURES = [
@@ -18,9 +76,22 @@ MODEL_FEATURES = [
     "Industry", "Country", "Employee_Count", "Annual_Revenue_Range",
 ]
 
-THRESHOLD_HIGH = 0.60   # >= 70%: MANUAL_REVIEW (Human handoff because it's too high value for AI)
-THRESHOLD_MED = 0.10    # 10-69%: AI_OUTREACH (AI engages the mid-level leads)
-                        # < 10%: NURTURE_CAMPAIGN (Low priority/low confidence)
+# Allocation thresholds — verified against the trained pipeline's calibration.
+#
+# Counterintuitive design:  high-confidence leads go to HUMAN review, not AI.
+# Rationale: when the model is very confident a lead will convert, the deal
+# is high-stakes — letting AI mishandle a mid-conversation objection on a
+# whale account is more expensive than the time cost of human handling.
+# AI handles the BULK of mid-tier leads where mistakes are cheap and
+# personalisation at scale is the only way to engage them.
+#
+#   ≥ 0.60  → MANUAL_REVIEW   (high-value, human takes over)
+#   0.10–0.60 → AI_OUTREACH    (mid-tier, AI engages with personalised email)
+#   < 0.10  → NURTURE_CAMPAIGN (cold, low-priority drip campaign)
+#
+# Tuned on the synthetic CTGAN B2B dataset; revisit when retraining the model.
+THRESHOLD_HIGH = 0.60
+THRESHOLD_MED  = 0.10
 
 # Path to the trained pipeline
 MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "lead_scorer_pipeline.pkl")
@@ -42,6 +113,9 @@ def load_pipeline():
     with open(MODEL_PATH, "rb") as f:
         _pipeline = pickle.load(f)
 
+    # Patch legacy sklearn internals (see compat shim above)
+    _patch_legacy_sklearn_objects(_pipeline)
+
     print(f"Lead scoring pipeline loaded from {MODEL_PATH}")
     return _pipeline
 
@@ -56,6 +130,11 @@ def get_allocation_decision(probability: float) -> str:
         return "NURTURE_CAMPAIGN"
 
 
+MIN_FEATURES_FOR_MODEL = 2  # Lowered from 3 — pipeline handles "Unknown" gracefully
+                            # for sparse leads, and real B2B exports often have only
+                            # 2-3 fields filled (company name + email + maybe industry).
+
+
 def predict_win_probability(lead_data: dict) -> dict:
     """
     Score a single lead.
@@ -66,6 +145,13 @@ def predict_win_probability(lead_data: dict) -> dict:
 
     Returns:
         dict with 'win_probability' (float) and 'allocation_decision' (str).
+
+    Strategy for sparse leads:
+      • ≥2 real features → use the model (trained encoders handle "Unknown" tokens)
+      • <2 real features → return fallback 0.30 (NURTURE_CAMPAIGN)
+        Rationale: testing showed the model returns ~0.51 for ALL-Unknown rows,
+        which would erroneously route empty leads to AI_OUTREACH. The fallback
+        prevents wasted LLM/SMTP cost on no-information leads.
     """
     pipeline = load_pipeline()
 
@@ -75,12 +161,13 @@ def predict_win_probability(lead_data: dict) -> dict:
         if f in lead_data and lead_data[f] and str(lead_data[f]).strip() not in ("", "nan", "None", "Unknown")
     )
 
-    # If fewer than 3 real features, don't trust the model — default to low priority
-    if present_features < 3 or pipeline is None:
+    # Too sparse to trust the model — default to nurture
+    if present_features < MIN_FEATURES_FOR_MODEL or pipeline is None:
         return {
             "win_probability": 0.30,
             "allocation_decision": "NURTURE_CAMPAIGN",
             "features_available": present_features,
+            "used_model": False,
         }
 
     # Build a single-row DataFrame with all required columns
@@ -102,12 +189,14 @@ def predict_win_probability(lead_data: dict) -> dict:
             "win_probability": 0.30,
             "allocation_decision": "NURTURE_CAMPAIGN",
             "features_available": present_features,
+            "used_model": False,
         }
 
     return {
         "win_probability": round(probability, 4),
         "allocation_decision": get_allocation_decision(probability),
         "features_available": present_features,
+        "used_model": True,
     }
 
 
@@ -135,11 +224,12 @@ def score_leads_batch(leads: list[dict]) -> list[dict]:
             if f in lead_data and lead_data[f] and str(lead_data[f]).strip() not in ("", "nan", "None", "Unknown")
         )
 
-        if present < 3:
+        if present < MIN_FEATURES_FOR_MODEL:
             results.append({
                 "win_probability": 0.30,
                 "allocation_decision": "NURTURE_CAMPAIGN",
                 "features_available": present,
+                "used_model": False,
             })
         else:
             row = {}
@@ -170,6 +260,7 @@ def score_leads_batch(leads: list[dict]) -> list[dict]:
                         1 for f in MODEL_FEATURES
                         if f in leads[idx] and leads[idx][f] and str(leads[idx][f]).strip() not in ("", "nan", "None", "Unknown")
                     ),
+                    "used_model": True,
                 }
         except Exception as e:
             import traceback
@@ -179,6 +270,7 @@ def score_leads_batch(leads: list[dict]) -> list[dict]:
                     "win_probability": 0.30,
                     "allocation_decision": "NURTURE_CAMPAIGN",
                     "features_available": 0,
+                    "used_model": False,
                 }
 
     return results

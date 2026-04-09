@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import PromptTemplate
+from config.settings import settings
 from .rubric import EvaluationRubric
 
 class MCQEvaluator:
@@ -9,13 +10,14 @@ class MCQEvaluator:
     def __init__(
         self,
         rubric: Optional[EvaluationRubric] = None,
-        llm_model: str = "phi3:mini"
+        llm_model: str = None
     ):
         self.rubric = rubric or EvaluationRubric()
         self.llm = OllamaLLM(
-            model=llm_model,
+            model=llm_model or settings.MCQ_LLM_MODEL,
             temperature=0.3,  # Lower temperature for more consistent evaluation
-            base_url="http://localhost:11434"
+            base_url=settings.LOCAL_LLM_BASE_URL,
+            num_gpu=24  # Partial GPU offloading for 6GB VRAM
         )
     
     def evaluate_mcq(

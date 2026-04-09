@@ -22,6 +22,9 @@ from fastapi import BackgroundTasks
 class AllocationUpdate(BaseModel):
     allocation: str
 
+class StatusUpdate(BaseModel):
+    status: str  # PENDING | AI_ACTIVE | DRAFTING_OUTREACH | CLOSED_WON | CLOSED_LOST
+
 class BulkOutreachRequest(BaseModel):
     goal: str
 
@@ -519,23 +522,92 @@ def update_lead_allocation(
 
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-        
+
     valid = ["AI_OUTREACH", "MANUAL_REVIEW", "NURTURE_CAMPAIGN"]
     new_alloc = payload.allocation.upper()
     if new_alloc not in valid:
         raise HTTPException(status_code=400, detail=f"Invalid allocation. Must be one of {valid}")
-        
+
     lead.allocation_decision = new_alloc
-    
+
     # Also update the status accordingly
     if new_alloc == "AI_OUTREACH":
         lead.status = "AI_ACTIVE"
     else:
         lead.status = "PENDING"
-        
+
     db.commit()
-    
+
     return {"status": "success", "allocation": lead.allocation_decision, "lead_status": lead.status}
+
+
+@router.patch("/{lead_id}/status")
+def update_lead_status(
+    lead_id: int,
+    payload: StatusUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update a lead's lifecycle status.
+
+    Special behaviour: when transitioning to CLOSED_WON, kicks off a background
+    task that auto-generates an MCQ test from the conversation transcript and
+    saves it to the org's MCQ library. This bridges the lead/outreach module to
+    the MCQ training module — every won deal becomes a training data point.
+    """
+    lead = db.query(Lead).filter(
+        Lead.id == lead_id,
+        Lead.organization_id == current_user.organization_id
+    ).first()
+
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    valid = ["PENDING", "AI_ACTIVE", "DRAFTING_OUTREACH", "CLOSED_WON", "CLOSED_LOST"]
+    new_status = payload.status.upper()
+    if new_status not in valid:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of {valid}")
+
+    previous = lead.status
+    lead.status = new_status
+    db.commit()
+
+    response = {
+        "status": "success",
+        "lead_id": lead_id,
+        "previous_status": previous,
+        "new_status": new_status,
+    }
+
+    # Trigger MCQ generation on CLOSED_WON transition
+    if new_status == "CLOSED_WON" and previous != "CLOSED_WON":
+        background_tasks.add_task(_generate_mcq_in_background, lead_id)
+        response["mcq_generation_queued"] = True
+        print(f"📚 Lead {lead_id} → CLOSED_WON: queued MCQ generation in background")
+
+    return response
+
+
+def _generate_mcq_in_background(lead_id: int):
+    """Background task wrapper — opens its own DB session."""
+    from utils.database import SessionLocal
+    from services.lead_to_mcq_service import generate_mcq_from_lead_conversation
+
+    db = SessionLocal()
+    try:
+        result = generate_mcq_from_lead_conversation(db, lead_id)
+        if result:
+            print(f"✅ MCQ test {result.id} created from won lead {lead_id}")
+        else:
+            print(f"⚠️  MCQ generation returned None for lead {lead_id}")
+    except Exception as e:
+        print(f"❌ MCQ background task failed for lead {lead_id}: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        db.close()
 
 
 @router.post("/bulk-outreach")

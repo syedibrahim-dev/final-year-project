@@ -14,9 +14,12 @@ from utils.database import get_db
 from utils.dependencies import get_current_user, role_required
 from models.user import User
 from services import image_service, marketing_service
+from services.publishing_channels import get_channel_status, publish_to_channels, CHANNEL_FUNCTIONS
 from config.settings import settings
 
 router = APIRouter(prefix="/marketing", tags=["Marketing"])
+
+VALID_CHANNELS = list(CHANNEL_FUNCTIONS.keys())  # ["discord", "telegram", "webhook", "email"]
 
 # Where generated images live on disk
 MEDIA_DIR = Path(__file__).parent.parent / "media" / "marketing"
@@ -43,13 +46,14 @@ class GenerateCaptionRequest(BaseModel):
 
 
 class CreatePostRequest(BaseModel):
-    caption:        str
-    image_prompt:   str
-    platforms:      List[str]
-    status:         str = "draft"
-    image_filename: Optional[str] = None
-    image_seed:     Optional[int] = None
-    scheduled_at:   Optional[datetime] = None
+    caption:         str
+    image_prompt:    str
+    platforms:       List[str]
+    status:          str = "draft"
+    image_filename:  Optional[str] = None
+    image_seed:      Optional[int] = None
+    scheduled_at:    Optional[datetime] = None
+    target_channels: Optional[List[str]] = None  # ["discord","telegram","webhook","email"]
 
 
 class UpdateImageUrlRequest(BaseModel):
@@ -182,6 +186,28 @@ def create_post(
     if not request.platforms:
         raise HTTPException(status_code=400, detail="At least one platform is required")
 
+    # Validate target_channels if provided
+    if request.target_channels:
+        bad_ch = [c for c in request.target_channels if c not in VALID_CHANNELS]
+        if bad_ch:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid channel(s): {bad_ch}. Must be one of {VALID_CHANNELS}",
+            )
+
+    # Block scheduling unconfigured channels — fail fast instead of at publish time
+    if request.status == "scheduled" and request.target_channels:
+        configured = get_channel_status()
+        unconfigured = [c for c in request.target_channels if not configured.get(c)]
+        if unconfigured:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Cannot schedule to unconfigured channels: {unconfigured}. "
+                    f"Set the relevant env vars (e.g., DISCORD_WEBHOOK_URL) and restart."
+                ),
+            )
+
     post = marketing_service.create_post(
         db=db,
         org_id=current_user.organization_id,
@@ -193,6 +219,7 @@ def create_post(
         image_filename=request.image_filename,
         image_seed=request.image_seed,
         scheduled_at=request.scheduled_at,
+        target_channels=request.target_channels,
     )
 
     return _serialize(post)
@@ -243,30 +270,113 @@ def delete_post(
     return {"success": True, "message": "Post deleted"}
 
 
+# ═══════════════════════ Publishing channels ════════════════════════════════
+
+@router.get("/channels")
+def list_channel_status(
+    current_user: User = Depends(role_required(["admin", "manager"])),
+):
+    """
+    Return which publishing channels are configured. The frontend uses this
+    to disable un-configured channels in the picker.
+    """
+    return {
+        "channels": [
+            {"id": ch, "configured": is_set, "name": ch.capitalize()}
+            for ch, is_set in get_channel_status().items()
+        ]
+    }
+
+
+@router.post("/posts/{post_id}/publish-now")
+def publish_post_now(
+    post_id: int,
+    current_user: User = Depends(role_required(["admin", "manager"])),
+    db: Session = Depends(get_db),
+):
+    """
+    Manually publish a draft/scheduled post immediately, bypassing the
+    scheduler. Useful for testing channel configurations and for "publish now"
+    UI buttons.
+    """
+    post = marketing_service.get_post(db, post_id, current_user.organization_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.status == "published":
+        raise HTTPException(status_code=400, detail="Post is already published")
+
+    channels = post.target_channels or []
+    results = publish_to_channels(post, channels)
+    post.publish_log = results
+
+    successes = [r for r in results if r["success"]]
+    failures = [r for r in results if not r["success"]]
+    now = datetime.utcnow()
+
+    if not failures:
+        post.status = "published"
+        post.published_at = now
+    elif successes:
+        post.status = "partial_failure"
+        post.published_at = now
+        post.publish_error = "; ".join(f"{r['channel']}: {r['detail']}" for r in failures)
+    else:
+        post.status = "failed"
+        post.publish_error = "; ".join(f"{r['channel']}: {r['detail']}" for r in failures)
+
+    db.commit()
+    db.refresh(post)
+    return _serialize(post)
+
+
 # ═══════════════════════ Settings ═══════════════════════════════════════════
 
 @router.get("/settings/image-url")
 def get_image_gen_url(
+    current_user: User = Depends(role_required(["admin", "manager"])),
+):
+    """
+    Return the currently configured image generation URL plus a health probe
+    so the UI can show a green/red badge.
+    """
+    return image_service.check_image_service_health(timeout=4)
+
+
+@router.patch("/settings/image-url")
+def update_image_gen_url(
+    request: UpdateImageUrlRequest,
     current_user: User = Depends(role_required(["admin"])),
 ):
-    """Return the currently configured image generation URL."""
-    return {"image_gen_url": settings.IMAGE_GEN_URL}
+    """
+    Update the image gen URL at runtime — no backend restart needed.
+
+    Use this when the Colab notebook restarts and a new ngrok URL is issued:
+      1. Copy the new public URL from your Colab cell output
+      2. PATCH this endpoint with {"url": "https://new-tunnel.ngrok.io"}
+      3. Image generation immediately uses the new URL
+
+    Setting an empty string clears the override and falls back to .env.
+    """
+    image_service.set_image_url(request.url)
+    return image_service.check_image_service_health(timeout=4)
 
 
 # ═══════════════════════ Helpers ════════════════════════════════════════════
 
 def _serialize(post) -> dict:
     return {
-        "id":             post.id,
-        "caption":        post.caption,
-        "image_prompt":   post.image_prompt,
-        "image_filename": post.image_filename,
-        "image_seed":     post.image_seed,
-        "platforms":      post.platforms,
-        "status":         post.status,
-        "scheduled_at":   post.scheduled_at.isoformat() if post.scheduled_at else None,
-        "published_at":   post.published_at.isoformat() if post.published_at else None,
-        "publish_error":  post.publish_error,
-        "created_at":     post.created_at.isoformat() if post.created_at else None,
-        "created_by":     post.created_by,
+        "id":              post.id,
+        "caption":         post.caption,
+        "image_prompt":    post.image_prompt,
+        "image_filename":  post.image_filename,
+        "image_seed":      post.image_seed,
+        "platforms":       post.platforms,
+        "target_channels": post.target_channels or [],
+        "status":          post.status,
+        "scheduled_at":    post.scheduled_at.isoformat() if post.scheduled_at else None,
+        "published_at":    post.published_at.isoformat() if post.published_at else None,
+        "publish_error":   post.publish_error,
+        "publish_log":     post.publish_log or [],
+        "created_at":      post.created_at.isoformat() if post.created_at else None,
+        "created_by":      post.created_by,
     }

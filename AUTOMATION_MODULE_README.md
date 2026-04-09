@@ -12,10 +12,12 @@ The core goal of this module is to **scale personalized outbound sales outreach*
 ### 1. ML-Powered Lead Scoring & Allocation
 When a new list of B2B leads is uploaded (via CSV), a pre-trained **XGBoost model** automatically evaluates them.
 - It calculates a **Win Probability** (0 to 1) based on firmographic data (Industry, Employee Count, Revenue, Job Title).
-- **Auto-Allocation Logic:**
-  - **High Confidence ($\ge$ 70%):** Routed to the AI for automated engagement.
-  - **Medium Confidence (50-69%):** Flagged for review or cautious AI engagement.
-  - **Low Confidence (< 50%):** Immediate human handoff to the Sales Manager.
+- **Auto-Allocation Logic** *(counterintuitive — see rationale below)*:
+  - **High Confidence ($\ge$ 60%) → MANUAL_REVIEW:** Human sales rep takes over. These are high-value deals where the cost of an AI mishandling an objection outweighs the time saved.
+  - **Mid Confidence (10–60%) → AI_OUTREACH:** AI engages with a personalised, RAG-grounded cold email. This is the bulk of leads — where personalisation at scale is only possible with AI.
+  - **Low Confidence (< 10%) → NURTURE_CAMPAIGN:** Cold leads enter a low-touch drip campaign for periodic re-engagement.
+
+**Why high-confidence → human, not AI?** When the model is highly confident a lead will convert, the deal is high-stakes. A human can navigate complex multi-stakeholder buying decisions, custom pricing, and edge-case objections that an LLM-driven AI would mishandle. Letting AI loose on whale accounts is the kind of mistake that costs more than the time it saves. AI handles the long tail of mid-tier leads where the alternative isn't a human rep — it's *no engagement at all*.
 
 ### 2. Context-Aware AI Drafting (RAG Integration)
 For leads allocated to the AI, the backend uses **Retrieval-Augmented Generation (RAG)** to draft outbound emails.

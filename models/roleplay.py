@@ -23,10 +23,14 @@ class RoleplayPersona(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
-    personality_traits = Column(JSON, nullable=False)  # {"patience": "medium", "price_sensitivity": "high"}
-    common_objections = Column(JSON, nullable=False)  # ["Too expensive", "Need more time"]
-    tone = Column(String(50), nullable=False)  # casual, formal, aggressive, friendly
+    scenario_brief = Column(Text, nullable=True)   # Short briefing shown to trainee before session starts
+    personality_traits = Column(JSON, nullable=False)  # {"patience": "medium", "rag_probing_style": "challenge"}
+    trigger_topics = Column(JSON, nullable=True)   # {"topic_key": "how this persona reacts when topic is raised"}
+    company_context = Column(JSON, nullable=True)  # {"industry", "company_size", "tech_stack", "business_problems", ...}
+    common_objections = Column(JSON, nullable=False)  # Natural-language spoken objections
+    tone = Column(String(50), nullable=False)  # casual, formal
     difficulty = Column(String(50), nullable=False)  # beginner, intermediate, advanced
+    scenario_type = Column(String(50), nullable=True, default="acquisition")  # acquisition, expansion, displacement
     is_predefined = Column(Boolean, default=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
@@ -50,6 +54,7 @@ class RoleplaySession(Base):
     completed_at = Column(DateTime, nullable=True)
     duration_seconds = Column(Integer, nullable=True)
     total_messages = Column(Integer, default=0)
+    agent_cache = Column(JSON, nullable=True)  # Latest analyst agent results (stage, hint) for resume
     
     # Relationships
     persona = relationship("RoleplayPersona", back_populates="sessions")
@@ -68,6 +73,7 @@ class RoleplayMessage(Base):
     message_text = Column(Text, nullable=False)
     timestamp = Column(DateTime, default=datetime.now(timezone.utc))
     sequence_number = Column(Integer, nullable=False)
+    stage_snapshot = Column(JSON, nullable=True)  # Stage info at time of message (for analytics/replay)
     
     # Relationships
     session = relationship("RoleplaySession", back_populates="messages")

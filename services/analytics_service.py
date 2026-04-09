@@ -128,67 +128,113 @@ def get_top_products(db: Session, org_id: int, limit: int = 5, days: int = 30):
 
 def detect_sales_anomalies(db: Session, org_id: int, days: int = 60):
     """
-    Detect statistical anomalies in daily sales using Z-scores.
-    Flags days where revenue is significantly higher or lower than the moving average.
+    Detect statistical anomalies in daily sales using day-of-week aware Z-scores.
+
+    The naive approach (straight 7-day rolling) flags every weekend dip as a
+    "drop" because Sat/Sun are systematically lower than weekdays. This version
+    compares each day against the EWM mean *of the same weekday* — Mondays vs
+    Mondays, Saturdays vs Saturdays — so seasonal weekly patterns don't trip
+    the detector.
+
+    Algorithm:
+      1. Build a complete daily revenue series (fill gaps with 0)
+      2. Group by weekday (Mon=0..Sun=6)
+      3. For each weekday: compute exponentially weighted mean and std of past
+         observations of THAT weekday only (4-period span ≈ last 4 weeks)
+      4. Z-score: (revenue - dow_ewm_mean) / dow_ewm_std
+      5. Flag |Z| > 1.8 (slightly tighter than the naive 2.0 threshold because
+         the dow-aware baseline is sharper — fewer false positives so we can
+         lower the bar)
+      6. Filter zero-revenue days where dow baseline is also near-zero
+         (handles permanently-closed days)
     """
     start_date = datetime.utcnow() - timedelta(days=days)
-    
+
     transactions = db.query(SalesTransaction).join(Product).join(Store).filter(
         Store.organization_id == org_id,
         SalesTransaction.sale_date >= start_date
     ).all()
-    
-    if len(transactions) < 7: # Need at least a week of data
+
+    if len(transactions) < 7:
         return []
-        
+
     df = pd.DataFrame([{
         'date': t.sale_date.date(),
         'revenue': t.total_amount or 0.0,
         'quantity': t.quantity
     } for t in transactions])
-    
+
     daily_revenue = df.groupby('date')['revenue'].sum().reset_index()
     daily_revenue['date'] = pd.to_datetime(daily_revenue['date'])
-    
-    # Needs a complete date range
+
+    # Complete date range with zero-fill
     date_range = pd.date_range(start=daily_revenue['date'].min(), end=daily_revenue['date'].max())
     daily_revenue = daily_revenue.set_index('date').reindex(date_range, fill_value=0).reset_index()
     daily_revenue.columns = ['date', 'revenue']
-    
-    if len(daily_revenue) < 14: # Wait for more history to do reliable stats
+
+    if len(daily_revenue) < 14:
         return []
-        
-    # Calculate 7-day rolling mean and std dev
-    rolling_mean = daily_revenue['revenue'].rolling(window=7, min_periods=1).mean()
-    rolling_std = daily_revenue['revenue'].rolling(window=7, min_periods=1).std()
-    
-    # Calculate Z-score
-    # Avoid division by zero
-    rolling_std = rolling_std.replace(0, 1) 
-    daily_revenue['z_score'] = (daily_revenue['revenue'] - rolling_mean) / rolling_std
-    
-    # Anomaly threshold: Z-score > 2 (significant spike) or < -2 (significant drop)
-    daily_revenue['rolling_mean'] = rolling_mean
-    
+
+    # ── Day-of-week aware baseline ──────────────────────────────────────────
+    daily_revenue['dow'] = daily_revenue['date'].dt.dayofweek  # 0=Mon, 6=Sun
+
+    # For each weekday group, compute EWM mean and std using only past
+    # observations of that same weekday. span=4 ≈ "last 4 weeks of Mondays".
+    # Use shift(1) so the current day isn't included in its own baseline.
+    def _per_dow_ewm(group, span=4):
+        shifted = group.shift(1)  # exclude current observation from baseline
+        return pd.DataFrame({
+            'dow_mean': shifted.ewm(span=span, adjust=False, min_periods=1).mean(),
+            'dow_std':  shifted.ewm(span=span, adjust=False, min_periods=2).std(),
+        })
+
+    grouped = daily_revenue.groupby('dow')['revenue']
+    dow_stats_list = []
+    for dow_value, group in grouped:
+        stats = _per_dow_ewm(group)
+        stats.index = group.index
+        dow_stats_list.append(stats)
+    dow_stats = pd.concat(dow_stats_list).sort_index()
+
+    daily_revenue['dow_mean'] = dow_stats['dow_mean']
+    daily_revenue['dow_std']  = dow_stats['dow_std']
+
+    # First few weeks lack baseline — drop those rows from consideration
+    daily_revenue = daily_revenue.dropna(subset=['dow_mean'])
+
+    # Proportional std floor: max($5, 15% of dow_mean). This prevents tiny
+    # variance windows from generating huge z-scores on small absolute swings.
+    # E.g. a Sat with mean=$30 gets floor=$5 (not $1), so a $90 day yields
+    # z = (90-30)/max(actual_std, 5) ≈ 12 — still flagged, but proportional.
+    proportional_floor = (daily_revenue['dow_mean'].abs() * 0.15).clip(lower=5.0)
+    daily_revenue['dow_std'] = daily_revenue['dow_std'].fillna(0)
+    daily_revenue['dow_std'] = daily_revenue[['dow_std']].max(axis=1).combine(proportional_floor, max)
+
+    daily_revenue['z_score'] = (daily_revenue['revenue'] - daily_revenue['dow_mean']) / daily_revenue['dow_std']
+
+    # Threshold tightened from 2.0 → 1.8 because the dow-aware baseline is
+    # sharper (less seasonal noise → fewer false positives → can lower bar)
+    Z_THRESHOLD = 1.8
+
     anomalies = daily_revenue[
-        ((daily_revenue['z_score'] > 2.0) | (daily_revenue['z_score'] < -2.0)) &
-        ~((daily_revenue['revenue'] == 0) & (daily_revenue['rolling_mean'] < 50))
+        ((daily_revenue['z_score'] > Z_THRESHOLD) | (daily_revenue['z_score'] < -Z_THRESHOLD))
+        # Filter days where this weekday is normally zero (permanently closed)
+        & ~((daily_revenue['revenue'] == 0) & (daily_revenue['dow_mean'] < 50))
     ].copy()
-    
+
+    DOW_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     results = []
     for idx, row in anomalies.iterrows():
         is_spike = row['z_score'] > 0
-        expected = row['rolling_mean']
-        
         results.append({
-            "date": row['date'].strftime('%Y-%m-%d'),
-            "actual_revenue": round(row['revenue'], 2),
-            "expected_revenue": round(expected, 2),
-            "type": "spike" if is_spike else "drop",
-            "z_score": round(row['z_score'], 2),
-            "severity": "high" if abs(row['z_score']) > 3 else "medium"
+            "date":              row['date'].strftime('%Y-%m-%d'),
+            "weekday":           DOW_NAMES[int(row['dow'])],
+            "actual_revenue":    round(row['revenue'], 2),
+            "expected_revenue":  round(row['dow_mean'], 2),  # this weekday's typical level
+            "type":              "spike" if is_spike else "drop",
+            "z_score":           round(row['z_score'], 2),
+            "severity":          "high" if abs(row['z_score']) > 3 else "medium",
         })
-        
-    # Sort newest first
+
     results.sort(key=lambda x: x['date'], reverse=True)
     return results
