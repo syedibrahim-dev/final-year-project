@@ -3,16 +3,27 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from typing import Generator
 from config.settings import settings
 
-# Create database engine with MySQL-specific settings
-engine = create_engine(
-    settings.DATABASE_URL,
-    pool_pre_ping=True,      # Test connections before using them
-    pool_recycle=3600,       # Recycle connections after 1 hour
-    pool_size=10,            # Base pool size (default was 5)
-    max_overflow=20,         # Extra connections allowed (default was 10)
-    pool_timeout=30,         # Timeout waiting for connection
-    echo=False               # Set to True for SQL query logging
-)
+# Create database engine — args differ between SQLite and MySQL
+_db_url = settings.DATABASE_URL
+if _db_url.startswith("sqlite"):
+    # SQLite needs check_same_thread=False for FastAPI's threaded request handling.
+    # Pool args are not applicable to SQLite's default SingletonThreadPool.
+    engine = create_engine(
+        _db_url,
+        connect_args={"check_same_thread": False},
+        echo=False,
+    )
+else:
+    # MySQL / PostgreSQL — use connection pooling
+    engine = create_engine(
+        _db_url,
+        pool_pre_ping=True,      # Test connections before using them
+        pool_recycle=3600,       # Recycle connections after 1 hour
+        pool_size=10,            # Base pool size (default was 5)
+        max_overflow=20,         # Extra connections allowed (default was 10)
+        pool_timeout=30,         # Timeout waiting for connection
+        echo=False               # Set to True for SQL query logging
+    )
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
