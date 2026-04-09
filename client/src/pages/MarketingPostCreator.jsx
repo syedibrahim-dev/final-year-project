@@ -103,6 +103,10 @@ function CreatePostTab({ token, genState, setGenState }) {
     const [scheduledAt,  setScheduledAt]  = useState('');
     const [saveLoading,  setSaveLoading]  = useState(false);
 
+    // Publishing channels (Discord/Telegram/Webhook/Email — not platform APIs)
+    const [targetChannels, setTargetChannels] = useState([]);
+    const [channelStatus,  setChannelStatus]  = useState([]);  // [{id, name, configured}]
+
     // Feedback
     const [error,   setError]   = useState('');
     const [success, setSuccess] = useState('');
@@ -120,6 +124,15 @@ function CreatePostTab({ token, genState, setGenState }) {
             );
         }
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // On mount: fetch which publishing channels are configured on the server
+    useEffect(() => {
+        let cancelled = false;
+        apiFetch('/marketing/channels', 'GET', null, token)
+            .then(data => { if (!cancelled) setChannelStatus(data.channels || []); })
+            .catch(() => { /* silent — channel picker just shows nothing */ });
+        return () => { cancelled = true; };
+    }, [token]);
 
     // ── Image generation ────────────────────────────────────────────────────
     const handleGenerateImage = async () => {
@@ -187,6 +200,10 @@ function CreatePostTab({ token, genState, setGenState }) {
     const togglePlatform = (id) =>
         setPlatforms(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
 
+    // ── Channel toggle (Discord/Telegram/Webhook/Email) ───────────────────────
+    const toggleChannel = (id) =>
+        setTargetChannels(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
+
     // ── Save post ─────────────────────────────────────────────────────────────
     const handleSave = async () => {
         if (!caption.trim())        { setError('Write or generate a caption.'); return; }
@@ -207,15 +224,19 @@ function CreatePostTab({ token, genState, setGenState }) {
                 caption,
                 image_prompt:   imgPrompt,
                 platforms,
+                target_channels: targetChannels,
                 status:         postStatus,
                 image_filename: generatedImg?.filename || null,
                 image_seed:     generatedImg?.seed     || null,
                 scheduled_at:   postStatus === 'scheduled' ? new Date(scheduledAt).toISOString() : null,
             }, token);
 
+            const channelMsg = targetChannels.length > 0
+                ? ` via ${targetChannels.join(', ')}`
+                : ' (no delivery channels — DB only)';
             setSuccess(postStatus === 'scheduled'
-                ? `🕐 Post scheduled for ${new Date(scheduledAt).toLocaleString()}!`
-                : '✅ Post saved as draft!');
+                ? `🕐 Scheduled for ${new Date(scheduledAt).toLocaleString()}${channelMsg}`
+                : `✅ Saved as draft${channelMsg}`);
 
             // Reset form
             setImgPrompt('');
@@ -223,6 +244,7 @@ function CreatePostTab({ token, genState, setGenState }) {
             setProductName('');
             setExtraContext('');
             setPlatforms([]);
+            setTargetChannels([]);
             setGeneratedImg(null);
             setPostStatus('draft');
             setScheduledAt('');
@@ -431,13 +453,55 @@ function CreatePostTab({ token, genState, setGenState }) {
                     </div>
                 )}
 
-                {/* Posting to social platforms — coming soon note */}
-                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 flex items-start gap-2">
-                    <span>🔌</span>
-                    <span>
-                        <strong>Coming soon:</strong> Actual posting to {platforms.join(', ') || 'platforms'} via their APIs.
-                        For now, the server marks scheduled posts as <em>published</em> at the right time.
-                    </span>
+                {/* Publishing channels — actual delivery destinations */}
+                <div className="mb-4">
+                    <label className="block text-xs font-bold text-slate-500 mb-2">
+                        🚀 Delivery channels (where the post actually goes)
+                    </label>
+                    {channelStatus.length === 0 ? (
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
+                            Loading channels…
+                        </div>
+                    ) : (
+                        <>
+                            <div className="grid grid-cols-2 gap-2">
+                                {channelStatus.map(ch => {
+                                    const isSelected = targetChannels.includes(ch.id);
+                                    const icons = { discord: '💬', telegram: '✈️', webhook: '🔗', email: '📧' };
+                                    return (
+                                        <button
+                                            key={ch.id}
+                                            type="button"
+                                            onClick={() => ch.configured && toggleChannel(ch.id)}
+                                            disabled={!ch.configured}
+                                            className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold border-2 transition-all ${
+                                                !ch.configured
+                                                    ? 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'
+                                                    : isSelected
+                                                        ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white border-transparent shadow-md'
+                                                        : 'border-slate-200 text-slate-600 hover:border-emerald-300 bg-white'
+                                            }`}
+                                        >
+                                            <span>{icons[ch.id] || '•'}</span>
+                                            <span className="truncate">{ch.name}</span>
+                                            {!ch.configured && <span className="ml-auto text-[10px] opacity-60">not set</span>}
+                                            {isSelected && <CheckCircle size={13} className="ml-auto" />}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {targetChannels.length === 0 && (
+                                <p className="text-[11px] text-slate-400 mt-2">
+                                    No channels selected — post will be saved to DB only (legacy mode).
+                                </p>
+                            )}
+                            {channelStatus.every(c => !c.configured) && (
+                                <p className="text-[11px] text-amber-600 mt-2">
+                                    💡 No channels configured. Set <code>DISCORD_WEBHOOK_URL</code>, <code>TELEGRAM_BOT_TOKEN</code>+<code>TELEGRAM_CHAT_ID</code>, <code>GENERIC_WEBHOOK_URL</code>, or <code>SMTP_EMAIL</code> in <code>.env</code> and restart the backend.
+                                </p>
+                            )}
+                        </>
+                    )}
                 </div>
 
                 <button

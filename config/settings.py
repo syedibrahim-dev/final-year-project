@@ -51,13 +51,25 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 50
 
     # ── Module 5b: AI Image Generation (Colab FLUX API) ──────────────────────
-    # Update this whenever your Colab ngrok URL changes (restart Colab → new URL).
-    IMAGE_GEN_URL: str = "https://unurban-sade-nondomineering.ngrok-free.dev"
+    # Set this in .env to your current Colab ngrok URL. The URL changes every
+    # time you restart the Colab notebook, so the admin can also override it
+    # at runtime via PATCH /marketing/settings/image-url (no restart needed).
+    # If unset, image generation gracefully degrades — caption-only posts work.
+    IMAGE_GEN_URL: str | None = None
 
     # ── Module 5a: SMTP Server Settings ──────────────────────────────────────
     SMTP_EMAIL: str | None = None
     SMTP_PASSWORD: str | None = None
-    
+
+    # ── Module 5b: Marketing publishing channels (alternatives to Meta API) ──
+    # All optional — set the ones you want to use, leave others blank.
+    DISCORD_WEBHOOK_URL: str | None = None        # Server settings → Integrations → Webhooks
+    TELEGRAM_BOT_TOKEN: str | None = None         # Get from @BotFather on Telegram
+    TELEGRAM_CHAT_ID:  str | None = None          # @YourChannel or numeric -100xxxxxxxxxx
+    GENERIC_WEBHOOK_URL: str | None = None        # Zapier / Make / n8n / IFTTT trigger URL
+    MARKETING_DIGEST_RECIPIENTS: str | None = None  # Comma-separated emails for digest
+    PUBLIC_BASE_URL: str | None = None            # e.g. https://yourdomain.com — for image URLs in webhook payloads
+
     class Config:
         env_file = ".env"          # ✅ Automatically loads from .env
         case_sensitive = True

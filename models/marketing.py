@@ -20,13 +20,15 @@ class MarketingPost(Base):
     image_seed = Column(Integer, nullable=True)
 
     # Targeting
-    platforms = Column(JSON, nullable=False, default=list)  # ["facebook", "instagram", "linkedin"]
+    platforms = Column(JSON, nullable=False, default=list)  # ["facebook", "instagram", "linkedin"] — display labels
+    target_channels = Column(JSON, nullable=True)            # ["discord", "telegram", "webhook", "email"] — actual delivery channels
 
-    # Lifecycle: draft → scheduled → published | failed
+    # Lifecycle: draft → scheduled → published | failed | partial_failure
     status = Column(String(50), nullable=False, default="draft")
     scheduled_at = Column(DateTime(timezone=True), nullable=True)
     published_at = Column(DateTime(timezone=True), nullable=True)
     publish_error = Column(Text, nullable=True)
+    publish_log = Column(JSON, nullable=True)                # [{channel, success, timestamp, detail, external_id}, ...]
 
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))

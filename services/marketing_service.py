@@ -91,8 +91,14 @@ def create_post(
     image_filename: Optional[str] = None,
     image_seed: Optional[int] = None,
     scheduled_at: Optional[datetime] = None,
+    target_channels: Optional[List[str]] = None,
 ) -> MarketingPost:
-    """Persist a new marketing post record."""
+    """Persist a new marketing post record.
+
+    `platforms` are display labels (Facebook/Instagram/LinkedIn) for tone tuning.
+    `target_channels` are the actual delivery destinations (discord/telegram/webhook/email)
+    used by `publish_due_posts` — empty list ⇒ legacy "DB-only" publish.
+    """
     post = MarketingPost(
         organization_id=org_id,
         created_by=user_id,
@@ -101,6 +107,7 @@ def create_post(
         image_filename=image_filename,
         image_seed=image_seed,
         platforms=platforms,
+        target_channels=target_channels or [],
         status=status,
         scheduled_at=scheduled_at,
         created_at=datetime.now(timezone.utc),
@@ -108,7 +115,7 @@ def create_post(
     db.add(post)
     db.commit()
     db.refresh(post)
-    print(f"📝 Created post {post.id} (status={status}) for org {org_id}")
+    print(f"📝 Created post {post.id} (status={status}, channels={target_channels or 'none'}) for org {org_id}")
     return post
 
 
@@ -165,11 +172,23 @@ def publish_due_posts(db: Session) -> None:
     Called by APScheduler every 60 seconds.
 
     Finds posts with status='scheduled' whose scheduled_at has passed and
-    'publishes' them.  Right now publishing = marking status=published.
+    publishes them via the channels listed in post.target_channels.
 
-    TODO (Phase 2): call Meta Graph API / LinkedIn UGC Posts API here once
-    OAuth tokens are stored in the database.
+    Channel options (no Meta/LinkedIn API access required):
+      • discord  — webhook URL (Server settings → Integrations → Webhooks)
+      • telegram — bot token from @BotFather + chat_id
+      • webhook  — generic POST to Zapier/Make/n8n/IFTTT
+      • email    — SMTP digest with embedded image
+
+    Each channel attempt is logged in post.publish_log; one channel's failure
+    does not poison the others. Final status reflects the aggregate:
+      • all succeeded   → "published"
+      • some succeeded  → "partial_failure"
+      • all failed      → "failed"
+      • no channels set → "published" (legacy DB-only behaviour, with stub log)
     """
+    from services.publishing_channels import publish_to_channels  # local import avoids circular
+
     now = datetime.now(timezone.utc)
 
     due = db.query(MarketingPost).filter(
@@ -183,19 +202,34 @@ def publish_due_posts(db: Session) -> None:
     print(f"⏰ Scheduler: {len(due)} post(s) due for publishing")
 
     for post in due:
+        channels = post.target_channels or []
         try:
-            # ── Social API calls go here in Phase 2 ──────────────────────────
-            # e.g. post_to_facebook(post)
-            # e.g. post_to_linkedin(post)
-            # ─────────────────────────────────────────────────────────────────
+            results = publish_to_channels(post, channels)
+            post.publish_log = results
 
-            post.status = "published"
-            post.published_at = now
-            print(f"   ✅ Post {post.id} published to {post.platforms}")
+            successes = [r for r in results if r["success"]]
+            failures = [r for r in results if not r["success"]]
+
+            if not failures:
+                post.status = "published"
+                post.published_at = now
+                channel_names = ", ".join(r["channel"] for r in successes) or "stub"
+                print(f"   ✅ Post {post.id} published via {channel_names}")
+            elif successes:
+                post.status = "partial_failure"
+                post.published_at = now
+                ok = ", ".join(r["channel"] for r in successes)
+                bad = ", ".join(f"{r['channel']}({r['detail'][:40]})" for r in failures)
+                post.publish_error = f"Partial: ✓{ok}  ✗{bad}"
+                print(f"   ⚠️  Post {post.id} partial — ok: {ok}; failed: {bad}")
+            else:
+                post.status = "failed"
+                post.publish_error = "; ".join(f"{r['channel']}: {r['detail']}" for r in failures)
+                print(f"   ❌ Post {post.id} all channels failed: {post.publish_error}")
 
         except Exception as e:
             post.status = "failed"
-            post.publish_error = str(e)
-            print(f"   ❌ Post {post.id} failed: {e}")
+            post.publish_error = f"Orchestrator crash: {type(e).__name__}: {e}"
+            print(f"   ❌ Post {post.id} crashed: {e}")
 
     db.commit()

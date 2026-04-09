@@ -6,17 +6,107 @@ Images are saved to media/marketing/ and served via /marketing/images/{filename}
 Uses an async job pattern so the HTTP request returns immediately:
   1. POST /generate-image/start  → {job_id}          (returns in <1 s)
   2. GET  /jobs/{job_id}         → {status, result}   (poll every 5 s)
+
+Runtime URL override:
+  The Colab ngrok URL changes on every Colab restart. Instead of editing
+  settings.py + restarting the backend, the admin can update the URL at
+  runtime via PATCH /marketing/settings/image-url. The new URL is held in
+  module memory and survives until the next backend restart.
+
+Graceful degradation:
+  If no URL is set (neither .env nor runtime override), or the URL is
+  unreachable, image generation fails fast with a clear error. The marketing
+  module still works for caption-only posts.
 """
 import requests
 import base64
 import uuid
 import threading
 from pathlib import Path
+from typing import Optional
 from config.settings import settings
 
 # Local media directory — created on first use
 MEDIA_DIR = Path(__file__).parent.parent / "media" / "marketing"
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+
+# ─── Runtime URL override ────────────────────────────────────────────────────
+# Lives in module memory; admin updates via PATCH /marketing/settings/image-url.
+# Resets to settings.IMAGE_GEN_URL on backend restart.
+_runtime_url: Optional[str] = None
+_url_lock = threading.Lock()
+
+
+def get_image_url() -> Optional[str]:
+    """Effective image gen URL: runtime override > settings > None."""
+    with _url_lock:
+        return _runtime_url or settings.IMAGE_GEN_URL
+
+
+def set_image_url(new_url: Optional[str]) -> None:
+    """Admin endpoint hook — set the runtime URL override."""
+    global _runtime_url
+    with _url_lock:
+        _runtime_url = (new_url or "").strip() or None
+    print(f"🔧 Image gen URL updated to: {_runtime_url or '(unset — using settings default)'}")
+
+
+def check_image_service_health(timeout: int = 5) -> dict:
+    """
+    Probe the image gen URL with a short HEAD/GET to see if it's reachable.
+    Returns {url, configured, reachable, latency_ms, error}.
+    Used by GET /marketing/settings/image-url and the frontend's health badge.
+    """
+    url = get_image_url()
+    if not url:
+        return {
+            "url": None,
+            "configured": False,
+            "reachable": False,
+            "latency_ms": None,
+            "error": "No URL configured (IMAGE_GEN_URL unset and no runtime override)",
+        }
+
+    import time
+    start = time.monotonic()
+    try:
+        # Probe the root path. Colab notebook usually responds with 200 or 404
+        # to GET / — both prove the tunnel is alive. Anything that returns an
+        # HTTP status (even 5xx) means the server exists.
+        r = _session.get(url.rstrip("/") + "/", timeout=timeout)
+        latency = int((time.monotonic() - start) * 1000)
+        return {
+            "url": url,
+            "configured": True,
+            "reachable": True,
+            "latency_ms": latency,
+            "status_code": r.status_code,
+            "error": None,
+        }
+    except requests.exceptions.ConnectionError:
+        return {
+            "url": url,
+            "configured": True,
+            "reachable": False,
+            "latency_ms": None,
+            "error": "Connection refused — Colab/ngrok tunnel may have died. Restart Colab and update the URL.",
+        }
+    except requests.exceptions.Timeout:
+        return {
+            "url": url,
+            "configured": True,
+            "reachable": False,
+            "latency_ms": None,
+            "error": f"No response within {timeout}s",
+        }
+    except Exception as e:
+        return {
+            "url": url,
+            "configured": True,
+            "reachable": False,
+            "latency_ms": None,
+            "error": f"{type(e).__name__}: {e}",
+        }
 
 # Ngrok adds a browser redirect page for free-tier URLs.
 # This header bypasses it for programmatic requests.
@@ -62,8 +152,17 @@ def _call_colab_api(
     Uses a keep-alive session and unlimited read timeout.
     Does NOT retry — retrying would start a new generation on Colab.
     Returns {success, image_filename, image_base64, seed}.
+
+    Raises RuntimeError immediately if no image gen URL is configured.
     """
-    url = (base_url or settings.IMAGE_GEN_URL).rstrip("/") + "/generate"
+    effective_url = base_url or get_image_url()
+    if not effective_url:
+        raise RuntimeError(
+            "No image gen URL configured. Set IMAGE_GEN_URL in .env or update via "
+            "PATCH /marketing/settings/image-url. Marketing posts work without images — "
+            "skip the image generation step."
+        )
+    url = effective_url.rstrip("/") + "/generate"
 
     payload = {
         "prompt": prompt,
