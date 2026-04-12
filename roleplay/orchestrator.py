@@ -137,9 +137,14 @@ class AgentOrchestrator:
         )
 
         # ── Step 1: Guardrail Agent (no LLM) ──
+        guardrail_info: Dict[str, Any] = {"action": "allow", "reason": None}
         try:
             guardrail_result = self.guardrail_agent.run(ctx)
             action = guardrail_result.data.get("action", "allow")
+            guardrail_info = {
+                "action": action,
+                "reason": guardrail_result.data.get("reason"),
+            }
 
             if action == "block":
                 logger.info(
@@ -157,6 +162,14 @@ class AgentOrchestrator:
                     "accuracy_data": None,
                     "conversion_data": None,
                     "guardrail": guardrail_result.data,
+                    "agent_diagnostics": {
+                        "guardrail_action": "block",
+                        "guardrail_reason": guardrail_result.data.get("reason"),
+                        "objection_injected": False,
+                        "objection_directive": None,
+                        "adaptive_directive": None,
+                        "guardrail_redirect": None,
+                    },
                 }
 
             if action == "redirect":
@@ -467,6 +480,16 @@ class AgentOrchestrator:
                 "measures": "Sequence trajectory — is the conversation heading toward deal failure?",
             }
 
+        # Expose hidden agent outputs for demo / debug consumers (non-functional)
+        agent_diagnostics = {
+            "guardrail_action": guardrail_info.get("action", "allow"),
+            "guardrail_reason": guardrail_info.get("reason"),
+            "objection_injected": bool(ctx.objection_directive),
+            "objection_directive": ctx.objection_directive,
+            "adaptive_directive": ctx.difficulty_modifier,
+            "guardrail_redirect": ctx.guardrail_redirect,
+        }
+
         return {
             "response": persona_result.data["response"],
             "stage_info": stage_info,
@@ -477,6 +500,7 @@ class AgentOrchestrator:
             "conversion_data": conversion_data,       # raw SalesRL (backward compat)
             "trained_models": trained_models_data,     # raw models (backward compat)
             "deal_intelligence": deal_intelligence,    # unified, labelled view
+            "agent_diagnostics": agent_diagnostics,   # hidden agent outputs (for demo)
         }
 
     # ── Post-session evaluation ──────────────────────────────────────

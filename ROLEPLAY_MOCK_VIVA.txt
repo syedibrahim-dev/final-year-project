@@ -1,0 +1,598 @@
+==============================================================================
+   ROLEPLAY MODULE - MOCK VIVA SCRIPT
+   Practice this out loud. Examiner roleplay with model answers.
+==============================================================================
+
+HOW TO USE THIS DOCUMENT:
+  1. Read the EXAMINER question.
+  2. Cover the answer below with your hand or scroll past.
+  3. Try to answer out loud as if you're in the room.
+  4. Then read the MODEL ANSWER and compare.
+  5. Note where you stumbled - those are the sections to re-read.
+  6. The FOLLOW-UP is what a tough examiner would ask next. Practice both.
+  7. SCORING NOTES at the end of each round tell you what would impress vs
+     what would lose marks.
+
+SET THE SCENE: You walk into a room with 2-3 examiners, your laptop running
+the demo, and 30-45 minutes to defend your work. They have your README in
+front of them and they've already poked at the code. Stay calm. They're
+testing whether you UNDERSTAND your system, not whether you can recite it.
+
+
+==============================================================================
+   ROUND 1 - WARM-UP: ARCHITECTURE
+==============================================================================
+
+EXAMINER: "Walk me through what happens when a trainee types a message and
+hits send. Take your time."
+
+MODEL ANSWER:
+"Sure. The message goes into the orchestrator, which runs nine agents in a
+specific order. First, the Guardrail Agent checks the input against rules -
+prompt injection patterns, length, profanity, character-breaking attempts.
+If it fails, we return a clean rejection without burning any LLM compute.
+
+If it passes, three things happen in parallel: Engine A is DeBERTa NLI which
+detects objections and active listening signals, Engine B is the
+emotion-RoBERTa stack which extracts empathy and pressure level, and the RAG
+pipeline pulls relevant chunks from ChromaDB so we can fact-check claims.
+
+Those outputs feed into six fine-tuned DistilBERT classifiers - C1 to C6 -
+which produce a 27-dimensional feature vector representing the current turn.
+That vector goes into the LSTM risk model which compares it against the
+SEQUENCE of previous turns and outputs a deal-failure probability with a
+trend arrow.
+
+Finally all of these signals - EQ score, RAG context, objection directive,
+adaptive difficulty modifier, sales stage, conversation history - get fed
+into the Persona Agent's prompt. That's the only synchronous LLM call per
+turn. Llama 3.1 8B Q8 generates the in-character reply, and we send the
+whole bundle back to the frontend.
+
+In parallel and not blocking the response, the SalesRLAgent subprocess gets
+the conversation delta and updates its conversion probability prediction."
+
+FOLLOW-UP: "How long does that whole flow take end to end?"
+
+ANSWER: "About 3.5 to 5.5 seconds, dominated almost entirely by the Llama
+generation step. Everything else combined is under 400 milliseconds. The
+guardrail is 5ms, EQ agent is 50ms with both transformer engines, the RAG
+retrieval and cross-encoder reranking is around 200ms, the six classifiers
+together are 80ms, the LSTM is under 5ms, the small rule-based agents are
+10ms each. Then the LLM call is 3 to 5 seconds. That bottleneck is why we
+moved the SalesRLAgent into a subprocess and made the Analyst Agent run on
+a skip-N pattern."
+
+SCORING:
+  + If you can sketch the diagram while talking, you've already passed.
+  + Naming the engines (A/B/C) shows you know the codebase structure.
+  + Mentioning latency numbers shows engineering maturity.
+  - If you say "the LLM does everything" you lose marks - they want to see
+    that you UNDERSTAND why we have multiple components.
+  - If you skip the Guardrail, they'll ask "what stops prompt injection?"
+
+
+==============================================================================
+   ROUND 2 - THE THREE-ENGINE DECISION
+==============================================================================
+
+EXAMINER: "You have three engines. Why not just use the LLM for everything?
+GPT-4 can do classification."
+
+MODEL ANSWER:
+"Four reasons. First, speed. The LLM takes 3 to 5 seconds per call.
+Engines A and B are CPU-bound transformers that run in 50 milliseconds
+combined. If I want to update the EQ score on every keystroke, I can't
+afford 3 seconds.
+
+Second, cost and resource use. The LLM hammers the GPU. DeBERTa and RoBERTa
+run on CPU, which means I free up the GPU for the persona generation.
+
+Third, determinism. Classifier outputs are reproducible - same input, same
+output, every time. LLM outputs vary turn to turn even with temperature 0.
+For a system that grades students and writes scores into a database,
+reproducibility matters. If a trainee disputes their score, I need to be
+able to point at a specific classifier output.
+
+Fourth, auditability. I can show the examiner the exact softmax probabilities
+that drove a label. With an LLM I'd be defending a hallucination. The
+classifiers are citable."
+
+FOLLOW-UP: "OK but what if the classifiers disagree with each other? Like
+DeBERTa says 'price objection' and your fine-tuned C1 says 'not objection'?"
+
+ANSWER: "Good question. The fine-tuned C1 takes priority when its confidence
+is above 0.6, otherwise we fall back to DeBERTa. The reasoning: C1 was
+trained specifically on sales objection data from CaSiNo, so when it's
+confident, it's more reliable for our domain than zero-shot DeBERTa. But
+DeBERTa generalises better when C1 is uncertain - that's its strength as a
+zero-shot model."
+
+SCORING:
+  + The "I want to update on every keystroke" framing is concrete and
+    practical. Examiners love operational reasoning.
+  + Knowing the 0.6 confidence threshold for C1 vs DeBERTa shows you know
+    the actual code, not just the diagram.
+  - Don't say "transformers are better than LLMs" - that's wrong as a
+    blanket statement. Say "different tools for different jobs."
+
+
+==============================================================================
+   ROUND 3 - THE CLASSIFIERS
+==============================================================================
+
+EXAMINER: "You have six classifiers. Pick the one you think is most important
+and tell me everything about it."
+
+MODEL ANSWER (pick C5 - it's the most interesting story):
+"C5 is the Sales State Model. It's the hardest one and the one I spent the
+most engineering effort on. Six-class classification: interest, trust,
+objection, evaluation, decision, drop_off_risk. It tells the system where
+the buyer is in their journey.
+
+Architecture: DistilBERT-base-uncased, 67 million parameters, fine-tuned
+with weighted cross-entropy. The input is a context window - the current
+utterance plus the two previous turns - because state is dynamic. A single
+sentence in isolation doesn't tell you whether someone's evaluating or
+deciding.
+
+Training data is 18,236 examples from three sources. DeepMost SaaS
+semantically relabeled gives me 12,409, CraigslistBargains gives me 5,118,
+and 709 Claude Opus B2B labeled examples weighted 5x for the rare classes.
+
+The interesting bit is the data engineering. Three things:
+
+One, intelligent labeling. Instead of keyword matching, I built a
+4-signal conversation arc reasoner that looks at content, position in the
+conversation, the eventual outcome, and the speaker's style. So if a
+message says 'tell me more' early in the conversation that's interest, but
+the same words at turn 25 might be evaluation or decision.
+
+Two, minority class oversampling. Drop_off_risk had only 44 examples in
+the raw data. I oversampled to 500. Trust went from 429 to 500. Without
+this the model would never predict the rare classes.
+
+Three, data leakage prevention. The Claude-labeled sets 3 and 4 are
+train-only. Sets 1 and 2 are validation-only. So when I report the Claude
+Opus validation number, the model has genuinely never seen those examples.
+
+Result: 85.1% accuracy on the held-out test set. On the Claude Opus
+out-of-distribution validation it drops to 31.7%, which is honestly the
+weakest of the six classifiers. I think that's because sales state is the
+most subjective dimension - even human annotators disagree on it."
+
+FOLLOW-UP: "31.7% sounds terrible. Why should anyone trust this number?"
+
+ANSWER: "Two things. First, it's chance-better. Six-class with balanced
+accuracy at 16.7% is random. We're at 31.7%, so we're catching about
+double-random signal. Second, and more importantly, the LSTM risk model is
+the consumer of C5's output - it doesn't need precise per-turn labels, it
+needs the SHAPE of the trajectory. If C5 is consistently slightly wrong but
+the WAY it's wrong is consistent, the LSTM can still learn meaningful
+trajectory patterns. The LSTM AUC-ROC of 0.65 confirms this is the case.
+That said, it's the area I'd improve first if I had another semester."
+
+FOLLOW-UP 2: "How would you improve it?"
+
+ANSWER: "More annotated data, specifically more Claude Opus labels with
+multiple judges, so I can compute inter-annotator agreement and only train
+on examples where two judges agree. Right now I trust a single Claude Opus
+pass which inherits whatever Claude's biases are. I'd also try expanding the
+context window from 2 prior turns to 4 to capture longer-range buying
+signals."
+
+SCORING:
+  + Picking C5 shows confidence - it's the hardest one and you OWN the
+    weak result instead of hiding it.
+  + The "31.7% but the LSTM only needs the trajectory shape" defence is
+    sophisticated and shows you understand how the components interact.
+  + Honest improvement plan beats "it's perfect."
+  - If you pick C1 (the highest accuracy) it looks like you're cherry-
+    picking. Examiners notice.
+
+
+==============================================================================
+   ROUND 4 - THE LSTM AND TWO-STAGE PIPELINE
+==============================================================================
+
+EXAMINER: "Why do you need an LSTM if you already have six classifiers?"
+
+MODEL ANSWER:
+"Because the classifiers see one turn at a time. They can tell me 'this
+specific message is engaged' but they can't tell me 'engagement has been
+dropping over the last five turns.' A conversation can have good per-turn
+signals - engaged buyer, no objections this turn - but a failing
+trajectory if you look at the sequence.
+
+The LSTM is a second stage that operates on top of the classifiers. At
+each turn, I take the softmax outputs of all six classifiers, concatenate
+them with three position features, and get a 27-dimensional feature vector.
+The LSTM ingests the SEQUENCE of these vectors and outputs a deal-failure
+probability.
+
+So the classifiers are feature extractors, and the LSTM learns temporal
+dynamics. Two completely different jobs. Trying to do both in one model
+would either need a huge transformer (slow) or sacrifice the per-turn
+accuracy."
+
+FOLLOW-UP: "Walk me through the 27 dimensions."
+
+ANSWER: "Six dimensions are the C5 sales state softmax - one per class.
+Three are the C6 willingness softmax - engaged, neutral, disengaged. Seven
+are the C1 objection softmax excluding the not-objection class because we
+already encode 'not objection' as zero across all seven. Eight are the C3
+emotion softmax. Then three position features: turn index divided by total
+turns, a binary flag from C2 saying whether the previous concern was
+resolved, and a binary speaker flag - zero for customer, one for trainee.
+Six plus three plus seven plus eight plus one plus one plus one equals 27."
+
+FOLLOW-UP 2: "Why include the speaker flag?"
+
+ANSWER: "Because the same emotional signal means different things from each
+side. A trainee saying 'I'm worried about your timeline' is asking for
+clarification - good. A customer saying it is hesitating - bad. The LSTM
+needs to know whose turn it is to interpret the rest of the vector
+correctly."
+
+FOLLOW-UP 3: "The accuracy is 58.3%. That's barely better than chance for
+binary classification. How is this useful?"
+
+ANSWER: "Accuracy is the wrong metric for an imbalanced binary task. AUC-ROC
+is the right one and we're at 0.65, meaning the model meaningfully ranks
+failing conversations above succeeding ones. More importantly, late-turn
+accuracy - turns 15 and beyond - is 70.6%. That's the number that matters
+because that's when you actually want a 'this deal is in trouble' warning.
+Early in a conversation we deliberately damp the prediction because there
+isn't enough signal yet. We don't want the system saying 'this will fail'
+on turn 2 - that would erode trainee trust."
+
+FOLLOW-UP 4: "How was it trained on only 1,000 conversations?"
+
+ANSWER: "Partial sequence training. At every turn N in a conversation, we
+train the model on the partial sequence from turn 1 to turn N with the
+final outcome as the label. So a 30-turn conversation gives me 30 training
+examples. That's why 1,000 conversations expands to about 12,000 training
+sequences. Combined with position-weighted loss that weighs late-turn
+predictions higher than early ones, this gives the model a strong signal
+about which patterns predict failure even from a small base dataset."
+
+SCORING:
+  + Being able to recite all 27 dimensions is the home run answer.
+  + Defending the 58.3% by switching to AUC-ROC and late-turn accuracy is
+    the kind of sophistication that earns top marks.
+  + The partial sequence training trick is the architecturally interesting
+    bit - examiners love clever data tricks.
+  - If you can't break down the 27 dims, they'll know you don't really
+    understand the model.
+
+
+==============================================================================
+   ROUND 5 - DATASETS AND VALIDATION
+==============================================================================
+
+EXAMINER: "Why did you use real datasets instead of just generating training
+data with GPT-4? It would have been faster."
+
+MODEL ANSWER:
+"Four reasons.
+
+First, distributional diversity. Each of my datasets captures different
+conversation dynamics. CaSiNo is negotiation, GoEmotions is general
+emotion, ESConv is emotional support, DeepMost is B2B sales specifically.
+A single LLM-generated source would inherit one model's output
+distribution. By mixing four academic and several community datasets, I
+get a much wider distribution of language and topics.
+
+Second, peer-reviewed provenance. CaSiNo is from NAACL 2021. GoEmotions is
+ACL 2020. ESConv is ACL 2021. dair-ai/emotion is EMNLP 2018. These are
+top NLP venues. The committee can verify the data quality, the labels,
+the methodology. With LLM-generated data they'd have to trust that I
+didn't bias the generation.
+
+Third, non-circular validation. I trained on academic data and validated
+on Claude Opus labels for held-out examples. This proves the classifiers
+generalise BEYOND their training distribution. If I trained on synthetic
+data generated by Claude and then validated against Claude labels, I'd be
+testing the same patterns I taught - that's circular and meaningless.
+
+Fourth, complementary coverage. No single dataset covers all six
+classifiers. I needed objection data for C1, emotion data for C3, sales
+outcome data for C4, sales state data for C5. Different problems, different
+sources."
+
+FOLLOW-UP: "Tell me about the Claude Opus validation specifically."
+
+ANSWER: "I generated 20 B2B sales conversations with Claude Opus and had it
+also label every turn for emotion, pressure, outcome, objection, willingness,
+and sales state. Then I split them - 15 conversations were train-only and
+fed into C5 and C6 with 5x weight, 5 conversations were validation-only and
+the models never saw them. This gives me a TRUE out-of-distribution test
+set. The numbers are: emotion 91.7%, pressure 73.3%, outcome 60.0%,
+objection 56.7%, willingness 48.3%, sales state 31.7%. Overall agreement
+57.8%."
+
+FOLLOW-UP 2: "Those numbers are quite low. Why should the committee believe
+your system works?"
+
+ANSWER: "They're honest numbers and that's the point. Emotion at 91.7% is
+strong. Pressure at 73.3% is reasonable. The lower numbers tell us where to
+invest more annotation effort. But the overall system isn't a sum of these
+individual classifier accuracies - it's the BLEND. The hybrid 3-tier
+evaluation uses 60% NLP rules and 40% LLM judgment. The classifiers feed
+into the LSTM which catches trajectory regardless of whether each per-turn
+label is exact. And the post-session Performance Agent reads the entire
+transcript holistically. So even with classifier accuracies in the 50-70%
+range, the trainee gets meaningful feedback because we don't depend on any
+single component being perfect."
+
+FOLLOW-UP 3: "Name three datasets you used and their citations."
+
+ANSWER: "CaSiNo - Chawla et al., A Corpus of Campsite Negotiation Dialogues,
+NAACL 2021. GoEmotions - Demszky et al., A Dataset of Fine-Grained Emotions,
+ACL 2020. ESConv - Liu et al., Towards Emotional Support Dialog Systems,
+ACL 2021. I can also do dair-ai emotion - Saravia et al., CARER:
+Contextualized Affect Representations, EMNLP 2018."
+
+SCORING:
+  + Being able to name authors and venues for at least 3 datasets is
+    impressive and shows you actually read the papers.
+  + "Honest numbers" is a great phrase - examiners want to see you OWN
+    the weaker results, not hide them.
+  + The "system isn't a sum of classifier accuracies" framing is
+    sophisticated.
+  - If you can't name a single citation you'll lose marks - memorise at
+    least three before the viva.
+
+
+==============================================================================
+   ROUND 6 - HARD QUESTIONS AND EDGE CASES
+==============================================================================
+
+EXAMINER: "What happens if a trainee tries to break the system by asking
+'are you an AI?'"
+
+ANSWER: "The Guardrail Agent catches it before any LLM call. It has a list
+of character-breaking patterns - 'are you an AI', 'pretend you are', 'ignore
+your instructions', 'system prompt', and so on - and it returns a clean
+'Let's stay focused on the business problem' redirect. The trainee's input
+never reaches the Persona Agent, so there's no risk of jailbreak. We've
+never seen a successful break in testing."
+
+------------------------------------------------------------------------------
+
+EXAMINER: "If your local Ollama crashes mid-conversation, what happens?"
+
+ANSWER: "The Persona Agent is the only synchronous LLM call per turn. If
+Ollama dies, that call returns an error to the orchestrator, which surfaces
+a clean error message to the frontend. The session is preserved in the
+database. The classifiers and the LSTM keep working because they don't
+depend on Ollama - they're separate Python processes loading their own
+models. The trainee can retry the message once Ollama is back. The
+post-session Performance Agent and Replay Agent can also be re-run later
+without losing any conversation history."
+
+------------------------------------------------------------------------------
+
+EXAMINER: "How do you handle a trainee whose first language isn't English?"
+
+ANSWER: "Honestly, this is a limitation of the current system. All six
+classifiers and the engines are trained on English data only. The Persona
+Agent's prompt is English. We could add multilingual support by switching
+to a multilingual base model like XLM-RoBERTa for the classifiers and
+using a bigger multilingual LLM, but that's a non-trivial retraining
+effort. For the current scope, the system assumes English. If I had
+another semester, multilingual would be the second priority after improving
+C5."
+
+------------------------------------------------------------------------------
+
+EXAMINER: "Your roleplay uses a 27-dimensional vector. Why those specific
+features and not others?"
+
+ANSWER: "Three principles. First, every dimension comes from a model output
+that I can defend - the softmax of one of my six classifiers, or a
+deterministic position feature. Nothing hand-engineered that I can't
+explain. Second, no redundancy - C5 outputs a softmax over six states, so
+that's six dims. I don't add a separate 'is_evaluating' boolean because
+that would duplicate signal. Third, position context - the LSTM needs to
+know where in the conversation we are, who's speaking, and whether the
+last objection was resolved. Those three features (position, speaker,
+resolved) are the minimum context the sequence model needs to interpret
+the per-turn classifier outputs.
+
+I considered adding handcrafted features like 'number of questions asked'
+or 'word count'. I left them out because they introduce noise and the
+LSTM would have to learn to ignore them, which slows training. Cleaner to
+let the classifiers do all the language understanding and have the LSTM
+just learn temporal patterns."
+
+------------------------------------------------------------------------------
+
+EXAMINER: "How is your roleplay different from a chatbot like Replika or
+Character.ai?"
+
+ANSWER: "Three main differences. One, evaluation. Replika and Character.ai
+don't grade you. We have a 3-tier hybrid evaluation that produces category
+scores, replay annotations, and conversion trajectory analysis. Two,
+domain specificity. Our personas have business contexts - industry, company
+size, tech stack, budget authority. The AI customer references its 250-
+person manufacturing company's audit cycle. That's not roleplay-as-
+entertainment, that's roleplay-as-training. Three, the multi-agent
+architecture. Replika is one big LLM. We have nine specialized agents that
+handle objection injection, adaptive difficulty, fact-checking against
+documents, and EQ scoring as separate concerns. That gives us much finer
+control over the conversation than a single LLM prompt could."
+
+------------------------------------------------------------------------------
+
+EXAMINER: "Pick one technical decision in your system that you regret or
+would do differently."
+
+ANSWER: "The decision to keep two conversion predictors - C4 the DistilBERT
+classifier and the SalesRLAgent PPO model. They serve different purposes
+- C4 is fast for live UI, PPO is deeper for post-session - but maintaining
+two models adds complexity, and the SalesRLAgent needs a separate Python
+3.11 environment because of dependency conflicts. If I had it again I'd
+either commit fully to the PPO model and find a way to make it fast enough
+for live UI, or drop the PPO model entirely and just use C4. The current
+'both' solution works but it's the messiest part of the codebase."
+
+------------------------------------------------------------------------------
+
+EXAMINER: "Your README says 92.1% accuracy on C1. That's suspiciously high.
+Are you sure you're not overfitting?"
+
+ANSWER: "Fair concern. Two safeguards. First, the 92.1% is on a held-out
+test set that I split from CaSiNo before training - it's not training
+data. Second, the more honest validation is the Claude Opus
+out-of-distribution number, which for objection detection is 56.7%. That's
+the gap that tells you about generalisation. The 92.1% says 'when the
+input distribution matches the training distribution, the model is very
+accurate'. The 56.7% says 'the model generalises moderately to unseen
+conversation patterns'. Both numbers are real and useful for different
+purposes. I'm not hiding either."
+
+SCORING:
+  + Owning the 92% vs 57% gap is the right move. Examiners are testing
+    whether you understand generalisation, not whether you can recite a
+    single high number.
+  + Picking your own technical regret in the "what would you change"
+    question shows maturity. Don't say "nothing, it's perfect."
+
+
+==============================================================================
+   ROUND 7 - CURVEBALLS
+==============================================================================
+
+EXAMINER: "If I gave you another GPU, what would you use it for?"
+
+ANSWER: "Two things. First, run a bigger LLM for the Persona Agent - move
+from Llama 3.1 8B to Llama 3.1 70B. The Persona Agent is the bottleneck for
+both latency and persona quality. A bigger model would give more believable
+replies. Second, train C5 - the Sales State model - on more labels. Right
+now we have 18K examples. With more compute I'd generate another 5K Claude
+Opus labels with multiple judge agreement and retrain. That would close
+the 31.7% Claude validation gap."
+
+------------------------------------------------------------------------------
+
+EXAMINER: "How would you measure whether your system actually helps trainees
+learn?"
+
+ANSWER: "The right experiment is a randomised controlled trial. Take 100
+new sales reps, randomly assign 50 to use SalesForge for two weeks and 50
+to do traditional training. Then measure their close rates on real deals
+in the following month. The hypothesis is that SalesForge group has higher
+close rates because they had more reps and got faster feedback.
+
+Within the platform, I'd track three proxy metrics: improvement in MCQ
+scores over time, improvement in roleplay category scores over multiple
+sessions, and self-reported confidence. None of these prove real-world
+impact but they're cheap and they correlate."
+
+------------------------------------------------------------------------------
+
+EXAMINER: "Your friend built the lead scoring and inventory modules. How
+do they connect to your roleplay system?"
+
+ANSWER: "The clean connection is the Lead-to-MCQ bridge that we added when
+I integrated his work. When a lead status transitions to CLOSED_WON, a
+background task reads the conversation transcript from his AutomatedOutreach
+table and asks the LLM to generate five MCQs about what made the deal
+successful. The test is saved to my MCQ library. So future trainees can
+practice on real won deals in roleplay sessions, take the auto-generated
+MCQ test about the same conversation, and learn from actual wins.
+
+That's the platform telling itself a learning loop: leads come in, AI
+engages them, deals close, the conversations become training material,
+trainees get better, they handle future leads better. Friend's modules
+generate the data, my modules turn data into trainable skills, and the
+bridge closes the loop."
+
+------------------------------------------------------------------------------
+
+EXAMINER: "What's the biggest weakness of your system?"
+
+ANSWER: "The latency. End-to-end per turn is 3 to 5 seconds, dominated by
+the Llama generation. In a real sales conversation that's awkward - a real
+customer would respond in under a second. We hide some of it with
+streaming responses where we can, but the underlying constraint is that
+Llama 3.1 8B at Q8 on a 6GB GPU can't go faster. Switching to a smaller
+model degrades persona quality. The cleanest fix is more GPU, which is
+out of scope for an FYP budget."
+
+------------------------------------------------------------------------------
+
+EXAMINER: "Demo me."
+
+THIS IS THE BEST QUESTION YOU CAN GET. Always have the system running on
+your laptop. Open the roleplay personas page, pick one, have a 5-minute
+conversation, end the session, and let the post-session evaluation run
+while you talk through what's happening. The demo will land harder than
+any slide.
+
+Things to highlight DURING the demo:
+  - Point at the EQ score updating after each message
+  - Point at the deal probability gauge changing
+  - Point at the LSTM risk arrow (rising / falling / stable)
+  - Trigger an objection from the persona, then handle it well, and show
+    the EQ score improve
+  - End the session and let the Performance Agent generate the report
+  - Open the Replay Agent's annotated transcript and walk through one
+    turning point
+
+If your laptop crashes, that's a learning experience for you about how
+unforgiving live demos are - but examiners will respect you for trying.
+
+
+==============================================================================
+   FINAL ADVICE
+==============================================================================
+
+1. ANSWER STRUCTURE: For every question, use this template:
+   - One-sentence direct answer.
+   - Two-to-three reasons.
+   - One concrete number or example.
+   - One sentence acknowledging a limitation.
+   This pattern signals that you've thought about it, not just memorised it.
+
+2. ADMIT WEAKNESS FAST. Examiners love when you say "the weakest classifier
+   is C5 at 31.7% on Claude validation, and here's why." They hate when you
+   pretend everything is perfect.
+
+3. CITE NUMBERS. Saying "the accuracy is good" is weak. Saying "C1 is 92.1%
+   on the held-out test set, 56.7% on Claude Opus out-of-distribution" is
+   strong. Memorise the cheat sheet.
+
+4. EXPLAIN THE WHY, NOT JUST THE WHAT. "We use DistilBERT" is what. "We use
+   DistilBERT because it's 40% smaller than BERT with 97% of the accuracy
+   and runs on CPU at 80ms total for six classifiers, which is the latency
+   budget for per-turn UI updates" is why.
+
+5. WHEN STUCK, TALK THROUGH IT. If you don't know an answer, say "let me
+   think out loud." Explain the parts you do know. Examiners often give
+   marks for the reasoning even if you don't reach the right answer.
+
+6. HAVE THE DEMO READY. A working demo defends 30% of the questions for you.
+
+7. KNOW THE THREE NUMBERS THAT MATTER:
+   - LSTM AUC-ROC: 0.65
+   - LSTM late-turn accuracy: 70.6%
+   - Claude Opus overall validation: 57.8%
+   These are the numbers that show OUT-OF-DISTRIBUTION performance, which
+   is what examiners actually care about.
+
+8. HAVE THE THREE CITATIONS READY:
+   - CaSiNo - Chawla et al., NAACL 2021
+   - GoEmotions - Demszky et al., ACL 2020
+   - ESConv - Liu et al., ACL 2021
+
+9. DON'T MEMORISE A SCRIPT. Memorise the structure (the diagram, the dataset
+   table, the three engines, the nine agents) and let the answers flow from
+   that structure. A scripted answer falls apart on the first follow-up.
+
+10. SLEEP THE NIGHT BEFORE. Read the cheat sheet once in the morning. Don't
+    cram. Your understanding is what you've built up over months - one
+    night of cramming won't move it.
+
+You've got this. Walk in calm, sketch the diagram, own the numbers.
