@@ -203,14 +203,18 @@ const RegisterView = ({ navigate }) => {
         setMessage('');
         
         try {
-            const result = await apiFetch('/auth/register', 'POST', formData);
+            const cleaned = {
+                token: (formData.token || '').trim(),
+                password: formData.password,
+            };
+            const result = await apiFetch('/auth/register', 'POST', cleaned);
             setMessage('✅ Registration complete! Logging you in...');
             setFormData({ token: '', password: '' });
             setTimeout(() => navigate('/dashboard', result), 1500);
         } catch (error) {
             console.error('Registration error:', error);
-            if (error.message.includes('expired') || error.message.includes('invalid')) {
-                setMessage('❌ Invalid or expired invite token.');
+            if (error.message.toLowerCase().includes('expired') || error.message.toLowerCase().includes('invalid')) {
+                setMessage('❌ Invalid or expired invite token. Make sure you copied the full token with no extra spaces.');
             } else if (error.message.includes('8 characters')) {
                 setMessage('❌ Password must be at least 8 characters long.');
             } else {

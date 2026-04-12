@@ -18,38 +18,88 @@ from roleplay.agents.base import BaseAgent, AgentContext, AgentResult
 logger = logging.getLogger(__name__)
 
 # ── Claim extraction patterns ────────────────────────────────────────
+#
+# The agent must distinguish two very different things:
+#
+#   (a) HARD claims — carry concrete, checkable facts: numbers, prices,
+#       timeframes, percentages, multipliers, ROI figures, named
+#       superlatives ("industry-leading"). These MUST be fact-checked.
+#
+#   (b) SOFT filler — conversational verbs in generic sentences like
+#       "the goal is to reduce your workload", "we can help you save
+#       time". Sending these to RAG produces noisy low similarity
+#       scores and creates false-positive "unverified" flags.
+#
+# Old logic treated (b) as a claim whenever any of {reduce, offer,
+# save, improve, scale, ...} appeared. New logic requires a sentence
+# to contain at least one HARD marker before it's forwarded to RAG.
 
-# Sentences likely to contain factual claims
-CLAIM_INDICATORS = [
-    r'\b\d+%',           # percentages
-    r'\$[\d.,]+',        # dollar amounts
-    r'\b\d+\s*(x|times)\b',  # multipliers
-    r'\b\d+\s*(hour|day|week|month|year)s?\b',  # time-based claims
-    r'\b(feature|capability|include|offer|provide|support|guarantee|deliver|achieve'
-    r'|reduce|increase|improve|save|automate|streamline|enable|accelerate|integrate'
-    r'|eliminate|optimize|simplify|scale)\b',
-    r'\b(compared to|better than|faster than|more than|up to|at least|on average)\b',
-    r'\b(industry.?leading|best.?in.?class|state.?of.?the.?art|cutting.?edge|enterprise.?grade)\b',
-    r'\b(roi|cost.?sav|payback|break.?even|total.?cost)\b',  # ROI / cost claims
+# Hard markers — any one of these anchors the sentence to a concrete claim
+HARD_CLAIM_PATTERNS = [
+    r'\b\d+\s*%',                                              # percentages (also "60 %")
+    r'\$\s*[\d][\d.,]*',                                       # dollar amounts
+    r'\b(?:usd|eur|gbp|inr|cad|aud)\s*[\d][\d.,]*',            # other currencies
+    r'\b[\d][\d.,]*\s*(?:dollars?|euros?|pounds?|rupees?)\b',  # spelled-out currency
+    r'\b\d+\s*(?:x|times)\b',                                  # multipliers ("3x faster")
+    r'\b\d+\s*(?:hours?|days?|weeks?|months?|years?|minutes?)\b',  # timeframes
+    r'\b(?:industry.?leading|best.?in.?class|state.?of.?the.?art|cutting.?edge|enterprise.?grade)\b',
+    r'\b(?:roi|payback|break.?even|total.?cost|cost.?sav\w*)\b',
 ]
+_HARD_CLAIM_RE = re.compile("|".join(HARD_CLAIM_PATTERNS), re.IGNORECASE)
+
+_NUMBER_RE = re.compile(
+    r'\$\s*\d[\d,]*(?:\.\d+)?'    # $15,000 / $ 15000.50
+    r'|\d[\d,]*(?:\.\d+)?\s*%'    # 60% / 12.5 %
+    r'|\b\d[\d,]*(?:\.\d+)?',     # bare numbers (also catches '3' in '3x')
+    re.IGNORECASE,
+)
 
 
 def _looks_like_claim(sentence: str) -> bool:
-    """Check if a sentence likely contains a factual/product claim."""
-    s = sentence.lower().strip()
-    if len(s) < 15:  # too short to be a claim
+    """A sentence is worth fact-checking only if it carries a HARD marker."""
+    s = sentence.strip()
+    if len(s) < 15:
         return False
-    for pattern in CLAIM_INDICATORS:
-        if re.search(pattern, s, re.IGNORECASE):
-            return True
-    return False
+    return bool(_HARD_CLAIM_RE.search(s))
 
 
 def _extract_claims(text: str) -> List[str]:
-    """Extract sentences that look like factual claims."""
+    """Extract sentences that look like hard factual claims."""
     sentences = re.split(r'(?<=[.!?])\s+', text.strip())
     claims = [s.strip() for s in sentences if _looks_like_claim(s)]
     return claims[:3]  # cap at 3 claims per message
+
+
+def _normalize_number(raw: str) -> str:
+    """Strip formatting so '$15,000' and '15000' compare equal."""
+    return re.sub(r'[^0-9.]', '', raw)
+
+
+def _extract_numbers(text: str) -> List[str]:
+    """Return normalized numeric tokens present in the text."""
+    out: List[str] = []
+    for m in _NUMBER_RE.finditer(text):
+        n = _normalize_number(m.group(0))
+        # drop trailing '.' if pattern caught something like "3."
+        n = n.rstrip('.')
+        if n and n != '.':
+            out.append(n)
+    return out
+
+
+def _numbers_supported(claim_numbers: List[str], chunks: List[dict]) -> List[str]:
+    """
+    Return the subset of claim_numbers that actually appear in ANY chunk.
+    Uses normalized comparison so formatting doesn't matter.
+    """
+    if not claim_numbers:
+        return []
+    chunk_numbers: set[str] = set()
+    for ch in chunks:
+        text = ch.get("chunk") or ""
+        for m in _NUMBER_RE.finditer(text):
+            chunk_numbers.add(_normalize_number(m.group(0)).rstrip('.'))
+    return [n for n in claim_numbers if n in chunk_numbers]
 
 
 class KnowledgeAccuracyAgent(BaseAgent):
@@ -97,16 +147,10 @@ class KnowledgeAccuracyAgent(BaseAgent):
                 "supported_claims": [],
             })
 
-        # Pre-loaded document context from orchestrator (used for quick substring check)
-        preloaded_context = (ctx.document_context or "").lower()
-
         for claim in claims:
             try:
-                # Fast check: if the claim's key terms appear in already-retrieved context,
-                # do a targeted RAG lookup to get the exact score. If not even mentioned,
-                # likely unverified.
                 chunks = retrieve_relevant_chunks(
-                    query=claim, org_id=ctx.org_id, k=3
+                    query=claim, org_id=ctx.org_id, k=5
                 )
 
                 if not chunks:
@@ -117,36 +161,48 @@ class KnowledgeAccuracyAgent(BaseAgent):
                     })
                     continue
 
-                # Retrieval score: 1 - L2_distance on normalised embeddings
-                # Range roughly [-0.4, 0.55]; higher = more relevant.
                 best = chunks[0]
-                score = best.get("score", 0.0)
+                score = float(best.get("score", 0.0))
+                best_source = (best.get("metadata") or {}).get("source", "document")
 
-                # Quantitative claims (%, $, timeframes) need a HIGHER bar.
-                # A generic positive score just means "document mentions the topic"
-                # but doesn't confirm the exact figure (e.g., "60% savings" vs doc
-                # that just mentions "cost savings" generically).
-                has_number = bool(re.search(
-                    r'\b\d+%|\$[\d.,]+|\b\d+\s*(x|times|hour|day|week|month|year)s?\b',
-                    claim, re.IGNORECASE
-                ))
-                support_threshold = 0.15 if has_number else 0.0
+                # Step 1: if the claim has numeric values, they MUST appear
+                # in the retrieved chunks. Topical similarity alone is not
+                # enough — a doc mentioning "pricing" does not support a
+                # hallucinated "$15,000" figure.
+                claim_numbers = _extract_numbers(claim)
+                if claim_numbers:
+                    found = _numbers_supported(claim_numbers, chunks)
+                    missing = [n for n in claim_numbers if n not in found]
 
-                if score >= support_threshold:
-                    supported.append({
-                        "claim": claim,
-                        "source": best.get("source", "document"),
-                        "similarity": round(score, 2),
-                    })
-                elif score >= -0.25:
-                    # Partial match — not flagged but not confirmed
-                    # For quantitative claims with moderate scores, flag as unverified
-                    if has_number and score < support_threshold:
+                    if missing:
                         flagged.append({
                             "claim": claim,
-                            "reason": "Quantitative claim not confirmed by documents",
+                            "reason": (
+                                f"Numeric value(s) {missing} not found in any "
+                                f"uploaded document"
+                            ),
                             "confidence": round(score, 2),
                         })
+                        continue
+
+                    # Numbers check out AND topical similarity is reasonable
+                    supported.append({
+                        "claim": claim,
+                        "source": best_source,
+                        "similarity": round(score, 2),
+                        "numbers_verified": found,
+                    })
+                    continue
+
+                # Step 2: non-numeric hard claims (superlatives, ROI words).
+                # Require a positive cross-encoder score. Raise the bar a
+                # little so weakly-related topics aren't auto-approved.
+                if score >= 0.08:
+                    supported.append({
+                        "claim": claim,
+                        "source": best_source,
+                        "similarity": round(score, 2),
+                    })
                 else:
                     flagged.append({
                         "claim": claim,
@@ -158,16 +214,15 @@ class KnowledgeAccuracyAgent(BaseAgent):
                 logger.warning(f"Claim check failed for '{claim[:50]}': {e}")
                 continue
 
-        # Determine overall flag
-        # If ANY claims were checked but NONE were supported, that's unverified — not "no_match"
+        # Determine overall flag.
+        # Priority: any flagged claim → "unverified". Otherwise, if at
+        # least one claim was supported → "accurate". If zero claims
+        # were extracted (filler-only trainee message) → "no_claims".
         total_checked = len(claims)
         if flagged:
             flag = "unverified"
-        elif supported and not flagged:
+        elif supported:
             flag = "accurate"
-        elif total_checked > 0 and not supported:
-            # Claims were made but none matched documents — warn the trainee
-            flag = "unverified"
         else:
             flag = "no_claims"
 

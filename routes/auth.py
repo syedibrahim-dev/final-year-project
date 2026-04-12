@@ -68,11 +68,20 @@ def register_with_invite(
     """
     
     print(f"📝 Registration attempt")
-    
+
+    # Strip whitespace — users often paste the token with a stray newline or
+    # trailing space, which breaks base64 padding on jose.decode().
+    raw_token = (registration.token or "").strip()
+    if not raw_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invite token is required"
+        )
+
     try:
         # Decode invite token
         payload = jwt.decode(
-            registration.token,
+            raw_token,
             settings.SECRET_KEY,
             algorithms=[settings.ALGORITHM]
         )
