@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Brain, CheckCircle, XCircle, RefreshCw, Loader2, Award, AlertCircle, Trophy } from 'lucide-react';
+import { Brain, CheckCircle, XCircle, RefreshCw, Loader2, Award, AlertCircle, Trophy, Trash2 } from 'lucide-react';
 import { mcq as mcqApi } from '../utils/api';
 import { Button } from '../App';
 
@@ -14,6 +14,7 @@ export default function MCQPracticeView({ orgId, token }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [startTime, setStartTime] = useState(null);
+    const [deleting, setDeleting] = useState(null);
 
     useEffect(() => {
         fetchTests();
@@ -36,6 +37,25 @@ export default function MCQPracticeView({ orgId, token }) {
             setError(`Error loading tests: ${err.message}`);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDeleteTest = async (e, testId, testTitle) => {
+        e.stopPropagation(); // Prevent triggering startTest
+        if (!window.confirm(`Delete "${testTitle}"? This will also remove all attempts and scores for this test.`)) {
+            return;
+        }
+        setDeleting(testId);
+        try {
+            await mcqApi.deleteTest(orgId, testId, token);
+            setTests(prev => prev.filter(t => t.id !== testId));
+            if (tests.length <= 1) {
+                setError('No MCQ tests available. Ask your admin to create some first.');
+            }
+        } catch (err) {
+            setError(`Failed to delete test: ${err.message}`);
+        } finally {
+            setDeleting(null);
         }
     };
 
@@ -145,11 +165,11 @@ export default function MCQPracticeView({ orgId, token }) {
         return (
             <div className="space-y-6">
                 <div className="border-b pb-4">
-                    <h3 className="text-2xl font-bold text-gray-800 flex items-center">
-                        <Brain className="mr-2 text-indigo-600" size={28} />
+                    <h3 className="text-2xl font-bold text-stone-800 flex items-center">
+                        <Brain className="mr-2 text-blue-600" size={28} />
                         MCQ Practice
                     </h3>
-                    <p className="text-sm text-gray-500 mt-1">
+                    <p className="text-sm text-stone-500 mt-1">
                         Select a test to practice and improve your knowledge
                     </p>
                 </div>
@@ -165,45 +185,59 @@ export default function MCQPracticeView({ orgId, token }) {
 
                 {loading ? (
                     <div className="flex items-center justify-center p-12">
-                        <Loader2 className="animate-spin h-8 w-8 text-indigo-600" />
-                        <span className="ml-3 text-gray-600">Loading tests...</span>
+                        <Loader2 className="animate-spin h-8 w-8 text-blue-600" />
+                        <span className="ml-3 text-stone-500">Loading tests...</span>
                     </div>
                 ) : tests.length === 0 ? (
-                    <div className="text-center p-12 bg-gray-50 rounded-lg border">
-                        <Brain className="mx-auto h-16 w-16 text-gray-400 mb-4" />
-                        <h3 className="text-xl font-semibold text-gray-700 mb-2">No Tests Available</h3>
-                        <p className="text-gray-500">Ask your admin to create MCQ tests.</p>
+                    <div className="text-center p-12 bg-stone-50 rounded-lg border">
+                        <Brain className="mx-auto h-16 w-16 text-stone-400 mb-4" />
+                        <h3 className="text-xl font-semibold text-stone-600 mb-2">No Tests Available</h3>
+                        <p className="text-stone-500">Ask your admin to create MCQ tests.</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {tests.map(test => (
                             <div
                                 key={test.id}
-                                className="bg-white border-2 border-gray-200 rounded-lg p-6 hover:border-indigo-400 transition cursor-pointer"
+                                className="bg-white border-2 border-stone-200 rounded-lg p-6 hover:border-blue-400 transition cursor-pointer relative group"
                                 onClick={() => startTest(test.id)}
                             >
                                 <div className="flex items-start justify-between mb-3">
-                                    <h4 className="font-semibold text-gray-900 text-lg">{test.title}</h4>
-                                    <Trophy className="text-indigo-500" size={24} />
+                                    <h4 className="font-semibold text-stone-800 text-lg pr-8">{test.title}</h4>
+                                    <div className="flex items-center space-x-2">
+                                        <button
+                                            onClick={(e) => handleDeleteTest(e, test.id, test.title)}
+                                            disabled={deleting === test.id}
+                                            className="p-1.5 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 transition"
+                                            title="Delete test"
+                                        >
+                                            {deleting === test.id ? (
+                                                <Loader2 className="animate-spin" size={18} />
+                                            ) : (
+                                                <Trash2 size={18} />
+                                            )}
+                                        </button>
+                                        <Trophy className="text-blue-600" size={24} />
+                                    </div>
                                 </div>
                                 
                                 {test.description && (
-                                    <p className="text-sm text-gray-600 mb-4">{test.description}</p>
+                                    <p className="text-sm text-stone-500 mb-4">{test.description}</p>
                                 )}
                                 
                                 <div className="flex items-center space-x-4 text-sm">
-                                    <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full font-medium">
+                                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">
                                         {test.topic}
                                     </span>
-                                    <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full">
+                                    <span className="px-2 py-1 bg-stone-100 text-stone-600 rounded-full">
                                         {test.difficulty}
                                     </span>
-                                    <span className="text-gray-600">
+                                    <span className="text-stone-500">
                                         {test.questions_count || 0} questions
                                     </span>
                                 </div>
                                 
-                                <button className="mt-4 w-full py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                                <button className="mt-4 w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
                                     Start Test
                                 </button>
                             </div>
@@ -221,7 +255,7 @@ export default function MCQPracticeView({ orgId, token }) {
         return (
             <div className="space-y-6">
                 <div className="border-b pb-4">
-                    <h3 className="text-2xl font-bold text-gray-800 flex items-center">
+                    <h3 className="text-2xl font-bold text-stone-800 flex items-center">
                         <Award className="mr-2 text-yellow-600" size={28} />
                         Test Results
                     </h3>
@@ -255,21 +289,21 @@ export default function MCQPracticeView({ orgId, token }) {
                     <div className="grid grid-cols-3 gap-4 mb-6">
                         <div className="bg-white rounded-lg p-4 text-center">
                             <div className="text-2xl font-bold text-blue-600">{finalResult.total_questions}</div>
-                            <div className="text-xs text-gray-600">Total Questions</div>
+                            <div className="text-xs text-stone-500">Total Questions</div>
                         </div>
                         <div className="bg-white rounded-lg p-4 text-center">
                             <div className="text-2xl font-bold text-green-600">{finalResult.correct_answers}</div>
-                            <div className="text-xs text-gray-600">Correct</div>
+                            <div className="text-xs text-stone-500">Correct</div>
                         </div>
                         <div className="bg-white rounded-lg p-4 text-center">
                             <div className="text-2xl font-bold text-red-600">
                                 {finalResult.total_questions - finalResult.correct_answers}
                             </div>
-                            <div className="text-xs text-gray-600">Incorrect</div>
+                            <div className="text-xs text-stone-500">Incorrect</div>
                         </div>
                     </div>
 
-                    <Button onClick={handleRestart} className="w-full bg-indigo-600 hover:bg-indigo-700">
+                    <Button onClick={handleRestart} className="w-full bg-blue-600 hover:bg-blue-700">
                         <RefreshCw className="mr-2" size={16} />
                         Try Another Test
                     </Button>
@@ -277,46 +311,68 @@ export default function MCQPracticeView({ orgId, token }) {
 
                 {/* Question-by-question review */}
                 <div className="bg-white border rounded-lg p-6">
-                    <h4 className="font-semibold text-gray-900 mb-4">Review Your Answers</h4>
+                    <h4 className="font-semibold text-stone-800 mb-4">Review Your Answers</h4>
                     <div className="space-y-4">
-                        {finalResult.answers_json?.map((detail, idx) => (
-                            <div
-                                key={idx}
-                                className={`p-4 rounded-lg border-2 ${
-                                    detail.is_correct
-                                        ? 'bg-green-50 border-green-300'
-                                        : 'bg-red-50 border-red-300'
-                                }`}
-                            >
-                                <div className="flex items-start justify-between mb-2">
-                                    <p className="font-medium text-gray-900">
-                                        Q{idx + 1}: {detail.question}
-                                    </p>
-                                    {detail.is_correct ? (
-                                        <CheckCircle className="text-green-600 flex-shrink-0" size={20} />
-                                    ) : (
-                                        <XCircle className="text-red-600 flex-shrink-0" size={20} />
+                        {finalResult.answers_json?.map((detail, idx) => {
+                            // Find the misconception info for the user's wrong pick
+                            const question = testDetails?.questions?.[idx];
+                            const selectedOption = question?.options?.find(
+                                (_, oi) => ['A','B','C','D'][oi] === detail.user_answer
+                            );
+                            const misconceptionInfo = !detail.is_correct && selectedOption;
+
+                            return (
+                                <div
+                                    key={idx}
+                                    className={`p-4 rounded-lg border-2 ${
+                                        detail.is_correct
+                                            ? 'bg-green-50 border-green-300'
+                                            : 'bg-red-50 border-red-300'
+                                    }`}
+                                >
+                                    <div className="flex items-start justify-between mb-2">
+                                        <p className="font-medium text-stone-800">
+                                            Q{idx + 1}: {detail.question}
+                                        </p>
+                                        {detail.is_correct ? (
+                                            <CheckCircle className="text-green-600 flex-shrink-0" size={20} />
+                                        ) : (
+                                            <XCircle className="text-red-600 flex-shrink-0" size={20} />
+                                        )}
+                                    </div>
+
+                                    {!detail.is_correct && (
+                                        <div className="text-sm mt-2 space-y-2">
+                                            <p className="text-red-800">
+                                                Your answer: {detail.user_answer}
+                                            </p>
+                                            <p className="text-green-800">
+                                                Correct answer: {detail.correct_answer}
+                                            </p>
+                                            {misconceptionInfo?.why_wrong && (
+                                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
+                                                    <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1">
+                                                        Why This Answer Is Wrong
+                                                        {misconceptionInfo.misconception_type && (
+                                                            <span className="ml-2 px-1.5 py-0.5 bg-amber-200 text-amber-800 rounded text-[9px]">
+                                                                {misconceptionInfo.misconception_type.replace(/_/g, ' ')}
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                    <p className="text-sm text-amber-900">{misconceptionInfo.why_wrong}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {detail.explanation && (
+                                        <p className="text-sm text-stone-600 mt-2">
+                                            <strong>Explanation:</strong> {detail.explanation}
+                                        </p>
                                     )}
                                 </div>
-                                
-                                {!detail.is_correct && (
-                                    <div className="text-sm mt-2">
-                                        <p className="text-red-800">
-                                            Your answer: {detail.user_answer}
-                                        </p>
-                                        <p className="text-green-800">
-                                            Correct answer: {detail.correct_answer}
-                                        </p>
-                                    </div>
-                                )}
-                                
-                                {detail.explanation && (
-                                    <p className="text-sm text-gray-700 mt-2">
-                                        <strong>Explanation:</strong> {detail.explanation}
-                                    </p>
-                                )}
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             </div>
@@ -327,7 +383,7 @@ export default function MCQPracticeView({ orgId, token }) {
     if (!testDetails) {
         return (
             <div className="flex items-center justify-center p-12">
-                <Loader2 className="animate-spin h-8 w-8 text-indigo-600" />
+                <Loader2 className="animate-spin h-8 w-8 text-blue-600" />
             </div>
         );
     }
@@ -340,23 +396,23 @@ export default function MCQPracticeView({ orgId, token }) {
             {/* Header */}
             <div className="border-b pb-4 flex justify-between items-center">
                 <div>
-                    <h3 className="text-2xl font-bold text-gray-800 flex items-center">
-                        <Brain className="mr-2 text-indigo-600" size={28} />
+                    <h3 className="text-2xl font-bold text-stone-800 flex items-center">
+                        <Brain className="mr-2 text-blue-600" size={28} />
                         {testDetails.title}
                     </h3>
-                    <p className="text-sm text-gray-500 mt-1">
+                    <p className="text-sm text-stone-500 mt-1">
                         Question {currentIndex + 1} of {testDetails.questions.length}
                     </p>
                 </div>
-                <Button onClick={handleRestart} className="bg-gray-500 hover:bg-gray-600">
+                <Button onClick={handleRestart} className="bg-stone-500 hover:bg-stone-600">
                     Exit Test
                 </Button>
             </div>
 
             {/* Progress Bar */}
-            <div className="bg-gray-200 rounded-full h-2">
+            <div className="bg-stone-200 rounded-full h-2">
                 <div
-                    className="bg-indigo-600 h-2 rounded-full transition-all"
+                    className="bg-blue-600 h-2 rounded-full transition-all"
                     style={{ width: `${progress}%` }}
                 />
             </div>
@@ -365,18 +421,18 @@ export default function MCQPracticeView({ orgId, token }) {
             <div className="bg-white border rounded-xl p-6 shadow-sm">
                 <div className="mb-6">
                     <div className="flex items-center space-x-2 mb-3">
-                        <span className="px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-full">
+                        <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">
                             {currentQuestion.difficulty}
                         </span>
                         <span className={`px-2 py-1 rounded-full text-xs ${
                             answers[currentIndex] !== null
                                 ? 'bg-green-100 text-green-700'
-                                : 'bg-gray-100 text-gray-700'
+                                : 'bg-stone-100 text-stone-600'
                         }`}>
                             {answers[currentIndex] !== null ? 'Answered' : 'Not answered'}
                         </span>
                     </div>
-                    <h4 className="text-lg font-semibold text-gray-800 leading-relaxed">
+                    <h4 className="text-lg font-semibold text-stone-800 leading-relaxed">
                         {currentQuestion.question_text}
                     </h4>
                 </div>
@@ -393,8 +449,8 @@ export default function MCQPracticeView({ orgId, token }) {
                                 onClick={() => handleAnswerSelect(letter)}
                                 className={`w-full text-left p-4 border-2 rounded-lg transition-all ${
                                     isSelected
-                                        ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
-                                        : 'border-gray-300 bg-white hover:bg-gray-50 text-gray-800'
+                                        ? 'border-blue-500 bg-blue-50 text-blue-900'
+                                        : 'border-stone-300 bg-white hover:bg-stone-50 text-stone-800'
                                 }`}
                             >
                                 <div className="flex items-center">
@@ -412,12 +468,12 @@ export default function MCQPracticeView({ orgId, token }) {
                     <Button
                         onClick={handlePrevious}
                         disabled={currentIndex === 0}
-                        className="bg-gray-500 hover:bg-gray-600"
+                        className="bg-stone-500 hover:bg-stone-600"
                     >
                         Previous
                     </Button>
 
-                    <span className="text-sm text-gray-600">
+                    <span className="text-sm text-stone-500">
                         {answers.filter(a => a !== null).length} / {testDetails.questions.length} answered
                     </span>
 

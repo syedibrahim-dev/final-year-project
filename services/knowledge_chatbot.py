@@ -3,6 +3,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import json
 from services.rag_service import retrieve_relevant_chunks
+from config.settings import settings
 
 class KnowledgeChatbot:
     """
@@ -13,7 +14,7 @@ class KnowledgeChatbot:
     def __init__(self, org_id: int, llm_url: str = "http://localhost:11434"):
         self.org_id = org_id
         self.llm_url = llm_url
-        self.model_name = "phi3:mini"
+        self.model_name = settings.LOCAL_LLM_MODEL
         self.conversation_history = []
     
     def chat(
@@ -185,7 +186,8 @@ Answer briefly:"""
                         "temperature": 0.7,
                         "num_predict": 250,  # ✅ LIMIT LENGTH
                         "num_ctx": 2048,     # ✅ SMALLER CONTEXT
-                        "top_p": 0.9
+                        "top_p": 0.9,
+                        "num_gpu": 24  # Partial GPU offloading for 6GB VRAM
                     }
                 },
                 stream=True,

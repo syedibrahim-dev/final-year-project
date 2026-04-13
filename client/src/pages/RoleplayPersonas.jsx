@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Users, TrendingUp, MessageCircle, DollarSign, Clock, Zap, ChevronRight } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Loader2, Users, MessageCircle, Target, Shield, Flame, Mic } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 
 export default function RoleplayPersonas({ token, navigate }) {
@@ -7,9 +8,7 @@ export default function RoleplayPersonas({ token, navigate }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
-    useEffect(() => {
-        fetchPersonas();
-    }, []);
+    useEffect(() => { fetchPersonas(); }, []);
 
     const fetchPersonas = async () => {
         try {
@@ -23,136 +22,145 @@ export default function RoleplayPersonas({ token, navigate }) {
         }
     };
 
-    const startSession = async (personaId) => {
+    const startSession = async (personaId, mode = 'text') => {
         try {
             const response = await apiFetch('/roleplay/sessions/start', 'POST',
-                { persona_id: personaId },
-                token
+                { persona_id: personaId }, token
             );
-
-            // Navigate to chat interface with session ID
-            navigate('roleplay-chat', { sessionId: response.session_id });
+            navigate('roleplay-chat', { sessionId: response.session_id, mode });
         } catch (err) {
             alert(`Failed to start session: ${err.message}`);
         }
     };
 
-    const getDifficultyColor = (difficulty) => {
-        switch (difficulty) {
-            case 'beginner': return 'from-emerald-500 to-green-600';
-            case 'intermediate': return 'from-amber-500 to-orange-600';
-            case 'advanced': return 'from-rose-500 to-red-600';
-            default: return 'from-slate-500 to-gray-600';
-        }
-    };
-
-    const getDifficultyIcon = (difficulty) => {
-        switch (difficulty) {
-            case 'beginner': return '🌱';
-            case 'intermediate': return '⚡';
-            case 'advanced': return '🔥';
-            default: return '•';
-        }
+    const diffConfig = {
+        beginner:     { color: 'from-teal-500 to-teal-700', bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', shadow: 'hover:shadow-teal-500/[0.08]', hoverBorder: 'hover:border-teal-300/60', accent: 'text-teal-600', icon: <Target size={14} />, label: 'Beginner', emoji: '🟢' },
+        intermediate: { color: 'from-amber-500 to-amber-700', bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', shadow: 'hover:shadow-amber-500/[0.08]', hoverBorder: 'hover:border-amber-300/60', accent: 'text-amber-600', icon: <Shield size={14} />, label: 'Intermediate', emoji: '🟡' },
+        advanced:     { color: 'from-red-500 to-red-700', bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', shadow: 'hover:shadow-red-500/[0.08]', hoverBorder: 'hover:border-red-300/60', accent: 'text-red-600', icon: <Flame size={14} />, label: 'Advanced', emoji: '🔴' },
     };
 
     if (loading) {
         return (
-            <div className="text-center p-16">
-                <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-cyan-500 via-blue-500 to-indigo-600 rounded-3xl mb-6 shadow-2xl shadow-cyan-500/40 animate-pulse">
-                    <Loader2 className="animate-spin h-10 w-10 text-white" />
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/20 animate-pulse">
+                        <Loader2 className="animate-spin h-7 w-7 text-white" />
+                    </div>
+                    <p className="text-stone-600 font-medium">Loading personas...</p>
                 </div>
-                <p className="mt-4 text-slate-700 text-xl font-bold">Loading personas...</p>
             </div>
         );
     }
 
     if (error) {
         return (
-            <div className="text-center p-16">
-                <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-rose-500 to-red-600 rounded-3xl mb-6 shadow-2xl shadow-rose-500/40">
-                    <Users className="h-10 w-10 text-white" />
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <div className="w-14 h-14 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <Users className="h-7 w-7 text-red-500" />
+                    </div>
+                    <p className="text-red-600 font-semibold mb-3">{error}</p>
+                    <button
+                        onClick={fetchPersonas}
+                        className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                    >
+                        Try Again
+                    </button>
                 </div>
-                <p className="mt-4 text-rose-700 text-xl font-bold">{error}</p>
-                <button
-                    onClick={fetchPersonas}
-                    className="mt-6 px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-2xl font-bold hover:from-cyan-600 hover:to-blue-700 transition-all shadow-lg"
-                >
-                    Try Again
-                </button>
             </div>
         );
     }
 
     return (
-        <>
-            <div className="mb-8 bg-gradient-to-r from-cyan-50 via-blue-50 to-indigo-50 p-6 rounded-3xl border-2 border-cyan-100">
-                <div className="flex items-center space-x-3 mb-3">
-                    <div className="p-3 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-2xl shadow-lg shadow-cyan-500/30">
-                        <Users size={28} />
-                    </div>
-                    <h3 className="text-4xl font-black bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-700 bg-clip-text text-transparent">
-                        AI Roleplay Training
-                    </h3>
-                </div>
-                <p className="text-slate-600 text-xl font-semibold ml-16">
-                    Practice sales conversations with AI customer personas
-                </p>
-                <p className="text-slate-500 text-sm mt-2 ml-16">
-                    Choose a customer type below to start your practice session
-                </p>
+        <div className="animate-fadeInUp">
+            {/* Header */}
+            <div className="mb-8">
+                <h3 className="text-3xl font-bold text-stone-800 mb-1">AI Roleplay Training</h3>
+                <p className="text-stone-500">Choose a customer persona to start practicing</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {personas.map((persona) => (
-                    <div
-                        key={persona.id}
-                        className="bg-gradient-to-br from-white to-slate-50 p-6 rounded-3xl border-2 border- slate-200 shadow-xl hover:shadow-2xl hover:border-cyan-300 transition-all duration-300 group cursor-pointer"
-                        onClick={() => startSession(persona.id)}
-                    >
-                        {/* Header */}
-                        <div className="flex items-start justify-between mb-4">
-                            <div className="flex-1">
-                                <h4 className="text-2xl font-black text-slate-800 mb-2 group-hover:text-cyan-600 transition-colors">
-                                    {persona.name}
-                                </h4>
-                                <div className="flex items-center space-x-2">
-                                    <span className={`px-3 py-1 rounded-xl text-xs font-black text-white bg-gradient-to-r ${getDifficultyColor(persona.difficulty)} shadow-md`}>
-                                        {getDifficultyIcon(persona.difficulty)} {persona.difficulty.toUpperCase()}
-                                    </span>
-                                    <span className="px-3 py-1 rounded-xl text-xs font-bold text-slate-600 bg-slate-100">
-                                        {persona.tone}
-                                    </span>
+            {/* Persona Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {personas.map((persona, idx) => {
+                    const diff = diffConfig[persona.difficulty] || diffConfig.intermediate;
+                    return (
+                        <motion.div
+                            key={persona.id}
+                            initial={{ opacity: 0, y: 24 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: idx * 0.08, type: 'spring', stiffness: 260, damping: 22 }}
+                            whileHover={{ y: -6, transition: { duration: 0.25 } }}
+                            className={`group bg-white rounded-2xl border border-stone-200/80 ${diff.hoverBorder} shadow-sm hover:shadow-xl ${diff.shadow} transition-all duration-300 overflow-hidden`}
+                        >
+                            {/* Top gradient bar — color matches difficulty */}
+                            <div className={`h-1.5 bg-gradient-to-r ${diff.color}`} />
+
+                            <div className="p-5">
+                                {/* Header row */}
+                                <div className="flex items-start justify-between mb-3">
+                                    <div className="flex-1 min-w-0">
+                                        <h4 className={`text-lg font-bold text-stone-800 group-hover:${diff.accent} transition-colors truncate`}>
+                                            {persona.name}
+                                        </h4>
+                                        <div className="flex items-center space-x-2 mt-1.5 flex-wrap gap-y-1">
+                                            <span className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold ${diff.bg} ${diff.text} ${diff.border} border`}>
+                                                {diff.icon}
+                                                <span>{diff.label}</span>
+                                            </span>
+                                            <span className="px-2.5 py-1 rounded-lg text-xs font-medium text-stone-500 bg-stone-100">
+                                                {persona.tone}
+                                            </span>
+                                            {persona.scenario_type && persona.scenario_type !== 'acquisition' && (
+                                                <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                                                    persona.scenario_type === 'displacement'
+                                                        ? 'bg-red-50 text-red-600 border border-red-200'
+                                                        : 'bg-blue-50 text-blue-600 border border-blue-200'
+                                                }`}>
+                                                    {persona.scenario_type}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="p-2 bg-blue-50 rounded-xl group-hover:bg-blue-100 transition-colors ml-3">
+                                        <MessageCircle className="h-5 w-5 text-blue-600" />
+                                    </div>
+                                </div>
+
+                                {/* Description */}
+                                <p className="text-stone-500 text-sm leading-relaxed line-clamp-2 mb-4">
+                                    {persona.description}
+                                </p>
+
+                                {/* Start buttons — Sapphire Chat + Teal Voice */}
+                                <div className="flex space-x-2">
+                                    <button
+                                        onClick={() => startSession(persona.id, 'text')}
+                                        className="flex-1 flex items-center justify-center space-x-1.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-all duration-200 shadow-sm shadow-blue-500/15"
+                                    >
+                                        <MessageCircle size={14} />
+                                        <span>Chat</span>
+                                    </button>
+                                    <button
+                                        onClick={() => startSession(persona.id, 'voice')}
+                                        className="flex-1 flex items-center justify-center space-x-1.5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-sm font-semibold transition-all duration-200 shadow-sm shadow-teal-500/15"
+                                    >
+                                        <Mic size={14} />
+                                        <span>Voice</span>
+                                    </button>
                                 </div>
                             </div>
-                            <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-2xl shadow-lg shadow-cyan-500/30 group-hover:scale-110 transition-transform">
-                                <MessageCircle className="h-6 w-6 text-white" />
-                            </div>
-                        </div>
-
-                        {/* Description */}
-                        <p className="text-slate-600 text-sm mb-4 line-clamp-3">
-                            {persona.description}
-                        </p>
-
-                        {/* Start Button */}
-                        <button
-                            className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white rounded-2xl shadow-lg shadow-cyan-500/30 font-bold transition-all duration-200 transform group-hover:scale-[1.02] group-hover:shadow-xl active:scale-[0.98]"
-                        >
-                            <Zap size={18} />
-                            <span>Start Practice Session</span>
-                            <ChevronRight size={18} />
-                        </button>
-                    </div>
-                ))}
+                        </motion.div>
+                    );
+                })}
             </div>
 
             {personas.length === 0 && !loading && (
-                <div className="text-center p-16 bg-gradient-to-br from-slate-50 to-cyan-50 rounded-3xl border-2 border-slate-200">
-                    <Users className="h-16 w-16 text-slate-400 mx-auto mb-4" />
-                    <p className="text-slate-600 text-lg font-bold">No personas available</p>
-                    <p className="text-slate-500 text-sm mt-2">Please contact your administrator</p>
+                <div className="text-center py-16 bg-stone-50 rounded-2xl border border-stone-200">
+                    <Users className="h-12 w-12 text-stone-300 mx-auto mb-3" />
+                    <p className="text-stone-600 font-semibold">No personas available</p>
+                    <p className="text-stone-400 text-sm mt-1">Please contact your administrator</p>
                 </div>
             )}
-        </>
+        </div>
     );
 }

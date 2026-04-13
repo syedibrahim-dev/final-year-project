@@ -5,10 +5,11 @@ from utils.database import Base
 
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = {'extend_existing': True}  # ✅ ADD THIS
+    __table_args__ = {'extend_existing': True}
     
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
+    full_name = Column(String(255), nullable=True)  # Display name shown in the frontend
     hashed_password = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True)
     role = Column(String(50), default="trainee")

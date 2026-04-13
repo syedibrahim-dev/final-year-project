@@ -21,7 +21,7 @@ class MCQTest(Base):
     
     # Relationships
     creator = relationship("User", foreign_keys=[created_by])
-    attempts = relationship("MCQAttempt", back_populates="test")
+    attempts = relationship("MCQAttempt", back_populates="test", cascade="all, delete-orphan")
 
 class MCQAttempt(Base):
     """Tracks individual trainee attempts on MCQ tests"""

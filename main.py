@@ -1,6 +1,11 @@
+# Python 3.14+ compatibility patch - MUST be first import
+# Fixes pydantic.v1 PEP 649 deferred annotations issue (affects chromadb)
+import compat_patch  # noqa: F401
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from datetime import datetime, timedelta
 import sys
 import traceback
 
@@ -104,6 +109,45 @@ except ImportError as e:
     print(f"❌ Failed to import roleplay routes: {e}")
     traceback.print_exc()
 
+# Marketing routes (Module 5b)
+try:
+    from routes import marketing
+    routes_to_import.append(("marketing", marketing))
+    print("✅ Marketing routes imported")
+except ImportError as e:
+    print(f"❌ Failed to import marketing routes: {e}")
+    traceback.print_exc()
+
+# Inventory routes (Module 5e)
+try:
+    from routes import inventory
+    routes_to_import.append(("inventory", inventory))
+    print("✅ Inventory routes imported")
+except ImportError as e:
+    print(f"❌ Failed to import inventory routes: {e}")
+    traceback.print_exc()
+
+# Analytics routes (Module 5f)
+try:
+    from routes import analytics
+    routes_to_import.append(("analytics", analytics))
+    print("✅ Analytics routes imported")
+except ImportError as e:
+    print(f"❌ Failed to import analytics routes: {e}")
+    traceback.print_exc()
+
+# Lead scoring routes (Module 5a)
+try:
+    from routes import leads
+    routes_to_import.append(("leads", leads))
+    print("✅ Lead scoring routes imported")
+    # Pre-load the ML pipeline
+    from services.lead_scoring_service import load_pipeline
+    load_pipeline()
+except ImportError as e:
+    print(f"❌ Failed to import lead scoring routes: {e}")
+    traceback.print_exc()
+
 # Check if we have at least auth routes
 if not any(name == "auth" for name, _ in routes_to_import):
     print("\n❌ CRITICAL: Auth routes failed to import!")
@@ -111,6 +155,59 @@ if not any(name == "auth" for name, _ in routes_to_import):
     sys.exit(1)
 
 print(f"\n✅ Successfully imported {len(routes_to_import)} route modules")
+
+# ── APScheduler: background jobs ────────────────────────────────────────────
+#   1. publish_due_posts          — every 60 s, fires scheduled marketing posts
+#   2. refresh_all_forecasts      — every 6 h, regenerates inventory forecasts
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from services.marketing_service import publish_due_posts
+    from services.inventory_service import refresh_all_forecasts
+    from utils.database import SessionLocal as _SessionLocal
+
+    def _run_publish_job():
+        db = _SessionLocal()
+        try:
+            publish_due_posts(db)
+        except Exception as _e:
+            print(f"⚠️  Scheduler publish job error: {_e}")
+        finally:
+            db.close()
+
+    def _run_forecast_refresh_job():
+        db = _SessionLocal()
+        try:
+            summary = refresh_all_forecasts(db)
+            print(f"📊 Scheduled forecast refresh: {summary['products_succeeded']}/{summary['products_total']} succeeded")
+        except Exception as _e:
+            print(f"⚠️  Scheduler forecast refresh error: {_e}")
+        finally:
+            db.close()
+
+    _scheduler = BackgroundScheduler()
+    _scheduler.add_job(
+        _run_publish_job,
+        trigger="interval", seconds=60,
+        id="publish_scheduled_posts",
+    )
+    _scheduler.add_job(
+        _run_forecast_refresh_job,
+        trigger="interval", hours=6,
+        id="refresh_inventory_forecasts",
+        next_run_time=datetime.now() + timedelta(minutes=5),  # delay first run by 5 min after startup
+    )
+    _scheduler.start()
+    print("✅ APScheduler started")
+    print("   • publish_due_posts        — every 60 s")
+    print("   • refresh_all_forecasts    — every 6 h (first run in 5 min)")
+except ImportError:
+    print("⚠️  apscheduler not installed — scheduled jobs won't run.")
+    print("   Run:  pip install apscheduler")
+except Exception as _sched_err:
+    print(f"⚠️  Could not start scheduler: {_sched_err}")
+    import traceback
+    traceback.print_exc()
+
 
 # Startup event
 @app.on_event("startup")
@@ -174,6 +271,18 @@ async def startup_event():
         print(f"\n❌ STARTUP FAILED: {e}")
         traceback.print_exc()
         print("="*70 + "\n")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Gracefully shut down background services."""
+    try:
+        from services.conversion_service import get_conversion_service
+        get_conversion_service().shutdown()
+        print("✅ SalesRLAgent subprocess stopped")
+    except Exception:
+        pass
+
 
 # Include routers that successfully imported
 print("\n" + "="*70)
@@ -264,4 +373,4 @@ def api_info():
     }
 
 print("🎉 Application initialized successfully!")
-print("🚀 Ready to accept requests\n")
+print("🚀 Ready to accept requests\n")

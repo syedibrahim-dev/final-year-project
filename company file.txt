@@ -1,0 +1,67 @@
+Acme CloudShield: Enterprise Sales Playbook FY26
+
+1. Executive Summary: What is Digital Trust?
+
+The world today is connected in a consequential way. Devices are everywhere, and operational technology is now being rearchitected as connected infrastructure. The pace of digital transformation has accelerated, increasing the surface area of how businesses and people are connected.
+
+It is against this backdrop that Digital Trust is essential. Digital Trust is the foundation that enables us to build, participate in, and grow this connected world. Acme CloudShield is the premier platform designed to establish and automate Digital Trust across hybrid cloud environments.
+
+2. Product Offerings & Pricing
+
+Acme CloudShield is offered in two main tiers. Never offer the Enterprise features to a Pro customer without an upsell contract.
+
+CloudShield Pro
+
+Target Audience: Mid-market companies (100 - 500 employees).
+
+Key Features: Basic endpoint protection, standard 9-to-5 support, 30-day log retention.
+
+Pricing: $50 per user, per month. (Billed annually).
+
+Implementation Fee: Waived.
+
+CloudShield Enterprise
+
+Target Audience: Large enterprises (500+ employees).
+
+Key Features: Advanced AI-driven threat detection, 24/7 dedicated support team, zero-trust network access (ZTNA), infinite log retention.
+
+Pricing: $120 per user, per month. (Billed annually).
+
+Implementation Fee: $5,000 flat fee (Mandatory - do not waive without VP approval).
+
+3. Buyer Personas
+
+When selling CloudShield, you will primarily speak to two personas. Tailor your pitch accordingly:
+
+The CISO (Chief Information Security Officer): Cares about risk reduction. Pitch the AI-driven threat detection and zero-trust architecture. Do not lead with price.
+
+The CFO (Chief Financial Officer): Cares about ROI and budget. Pitch the consolidated toolset—CloudShield replaces 3 different legacy tools, saving an average of 22% in the first year.
+
+4. Competitor Analysis: Acme vs. GlobalSec
+
+Our biggest competitor is GlobalSec. When a prospect mentions GlobalSec, use the following pivot strategies:
+
+If they say: "GlobalSec is cheaper."
+
+Your Response: "GlobalSec uses legacy, signature-based detection. It's cheaper upfront, but a single data breach costs an average of $4 million. CloudShield's AI predicts zero-day threats before they happen."
+
+If they say: "We are already locked into a GlobalSec contract."
+
+Your Response: "We offer a 'Contract Buyout' program. If you switch to CloudShield Enterprise today, we will credit you up to 6 months of your remaining GlobalSec contract."
+
+5. Common Objections & Handling (The 3-A Framework)
+
+Always use the Acknowledge, Align, Answer (3-A) framework when facing objections.
+
+Objection 1: "It takes too long to implement."
+
+Acknowledge: "I completely understand your concern about downtime."
+
+Align: "For a company of your size, a smooth transition is critical."
+
+Answer: "Our Enterprise tier includes a dedicated implementation team. Our average deployment time is just 14 days, with zero disruption to your daily operations."
+
+Objection 2: "We only need the Zero-Trust Network Access (ZTNA) feature, can we buy just that?"
+
+Answer: "No. ZTNA is deeply integrated into our overall ecosystem and is exclusively available as part of the CloudShield Enterprise bundle. We do not sell modules standalone." (Note for Reps: Never promise standalone modules).

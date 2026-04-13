@@ -1,262 +1,429 @@
-# Sales Conversation Test Scripts
+# Sales Roleplay Test Scripts
 
-**Instructions:** Copy and paste these messages one at a time to test each persona. Wait for the AI response before sending the next message.
+**Purpose:** Use these scripts to test each AI persona. Send messages **one at a time**, wait for the AI customer's response, and adapt your approach — just like a real sales call.
+
+> **Before you start any session:** Read the **Scenario Brief** displayed on the persona card — it tells you who you're calling and what their context is. Treat it like the pre-call notes a real salesperson would have.
+
+---
+
+## How to Score Well
+
+The system evaluates you across **5 categories** (max 100 points total):
+
+| Category | Points | What It Tests |
+|----------|--------|--------------|
+| Rapport Building | 20 | Greetings, empathy, listening, personalization |
+| Needs Discovery | 20 | Open-ended questions, follow-ups, uncovering pain points |
+| Product Presentation | 20 | Value propositions, ROI, linking benefits to their needs |
+| Objection Handling | 20 | Acknowledging concerns, providing evidence, reframing |
+| Closing | 20 | Proposing next steps, setting timelines, asking for commitment |
+
+**Tips to score higher:**
+- Use **open-ended questions** (What / How / Why) — they score more than yes/no questions
+- **Follow up** on what they say: *"You mentioned X — can you tell me more about that?"*
+- Follow the **5-phase flow**: Opening → Discovery → Presentation → Objection Handling → Closing
+- Aim for **8–12 messages** per session for meaningful evaluation
 
 ---
 
 ## 🟢 Persona 1: The Friendly Prospect (BEGINNER)
-**Best for:** Testing basic conversation flow and rapport building
+**RAG Style:** Curious | **Tone:** Casual | **Decision Speed:** Medium | **Trust:** High
 
-### Opening (Rapport Building)
-```
-Hey there! Thanks for taking the time to chat with me today. How's your day going?
-```
+> **Scenario:** Open-minded manager, genuinely interested, tends to defer to team before deciding.
 
-### Discovery
+### Phase 1 — Opening
 ```
-I appreciate you making time for this. I noticed you're in the manufacturing industry - how long have you been with your company?
+Hey! Thanks so much for making time for this — how's your day going?
 ```
 
+### Phase 2 — Discovery
 ```
-That's great! So, I'm curious - how are you currently handling customer relationship management? Is there a system you're using right now?
+Before I share anything, I'd love to understand your situation first. Can you walk me through how your team currently handles [the relevant process]?
 ```
-
-### Transition to Needs
 ```
-Got it. And how's that working out for you? Are there any pain points or challenges you're running into?
+That's helpful context. What's been your biggest challenge with the current approach?
 ```
-
-### Present Solution
 ```
-I totally understand those challenges. We actually work with a lot of companies facing similar issues. Our CRM solution is designed specifically to help streamline customer tracking and improve team collaboration. Would you be interested in hearing more about how it works?
+You mentioned that as a pain point — how long has that been an issue, and what impact has it had on the team?
 ```
 
-### Value Proposition
+### Phase 3 — Value Presentation
 ```
-Essentially, our platform centralizes all your customer data in one place, so your sales and support teams can see the full customer journey. It also has automated follow-up reminders and real-time reporting. Most of our clients see about 30% improvement in customer retention within the first 6 months.
+Based on what you've shared, I think we can help specifically with [pain point]. Here's how it works in practice — [explain the relevant feature/solution]. Companies in similar situations have typically seen [specific measurable outcome]. Does that speak to what you're dealing with?
 ```
-
-### Handle Interest/Questions
 ```
-Those are great questions! The implementation typically takes 2-3 weeks, and we provide full training for your team. We also have dedicated support available 24/7. As for integration, yes - we connect seamlessly with most popular tools like email platforms, calendar apps, and accounting software.
+The other thing that tends to resonate with teams in your position is [second key benefit] — it specifically addresses the time your team spends on [related problem]. Would that be useful?
 ```
 
-### Closing
+### Phase 4 — Objection Handling
 ```
-I'm glad this sounds helpful! What would be the best next step for you? We could set up a quick demo for you and your team, or I could send over some case studies from companies similar to yours. What works better?
+I completely understand wanting to bring the team in — that's exactly the right move. What specific questions do you think they'd have? I can help you put together the key points to share with them.
 ```
-
----
-
-## 💰 Persona 2: The Budget Hunter (INTERMEDIATE)  
-**Best for:** Testing pricing discussions and value justification
-
-### Opening
 ```
-Hi! Thanks so much for scheduling this call. I really appreciate you taking the time. How's your week been treating you?
+On the timing concern — I hear you. What would need to be true for this to feel like the right time? I want to understand your situation, not just push a deal.
 ```
 
-### Discovery
+### Phase 5 — Closing
 ```
-I know time is valuable, so I'll keep this focused. Can you tell me a bit about what you're currently using for customer management? And what's your budget range for software solutions like this?
-```
-
-### Acknowledge Budget Consciousness
-```
-I completely understand - budget is always a key consideration. Before we talk numbers, let me ask: what are the biggest costs you're facing with your current setup? Any inefficiencies or manual processes eating up time?
-```
-
-### Present ROI-Focused Value
-```
-That makes sense. So our solution actually helps reduce those costs significantly. Instead of juggling multiple tools and spending hours on manual data entry, everything's automated and centralized. Most clients save 15-20 hours per week per team member. If we're talking about a team of 5, that's like getting back 2 full-time employees worth of productivity.
-```
-
-### Pricing Introduction
-```
-In terms of investment, we have tiered pricing based on team size. For a team your size, we're looking at around $150-200 per month. But here's the thing - that manual work you mentioned? If it's costing you even 10 hours a week at an average wage, that's already $400-500 in lost productivity monthly. So the ROI is pretty clear.
-```
-
-### Handle Price Objection
-```
-I hear you - and I respect that you're being careful with budget. How about this: we offer a 30-day free trial with full features. You can test it with your actual workflows, measure the time savings, and see if the ROI makes sense for you. No commitment until you're confident it's worth it. Would that work?
-```
-
-### Alternative Options
-```
-We also have a starter plan at $99/month with core features if you want to start smaller. And honestly, if it's not delivering value after the trial, you can walk away - no hard feelings. The goal is for this to pay for itself through efficiency gains.
-```
-
-### Closing
-```
-What do you think? Should we get you set up with that trial so you can see the actual numbers in your own business?
+I really appreciate how open you've been in this conversation. Here's what I'd suggest as a next step: a short 20-minute session with you and whoever else should be involved so everyone can ask questions together. Would early next week work, or is later in the month better for your team?
 ```
 
 ---
 
-## 🤔 Persona 3: The Skeptical Decision Maker (INTERMEDIATE)
-**Best for:** Testing credibility building and objection handling
+## 💰 Persona 2: The Budget Hunter (BEGINNER)
+**RAG Style:** Challenge | **Tone:** Casual | **Price Sensitivity:** Very High | **Decision Speed:** Slow
 
-### Opening
-```
-Good morning! I appreciate you giving me a few minutes today. I know you probably get a lot of these calls, so I'll make sure this is worth your time.
-```
+> **Scenario:** Cost-conscious ops manager, compares everything on price, will push back hard on cost.
 
-### Establish Credibility
+### Phase 1 — Opening
 ```
-Before we dive in, I wanted to ask - what's been your experience with CRM solutions in the past? Have you tried any that didn't quite live up to the hype?
+Hi! Thanks for taking this call — I know you're busy. How are things on your end?
 ```
 
-### Discovery with Empathy
+### Phase 2 — Discovery
 ```
-I totally get that skepticism - the market is flooded with products that overpromise. If I could understand your specific challenges a bit better, I can be straight with you about whether we're actually a good fit or not. What are the top 2-3 things you need a CRM to do?
+Before we get into the details, I'd love to understand your current setup. What does your process look like today, and where are you spending the most time or money?
 ```
-
-### Present with Proof
 ```
-Those are solid requirements. Let me be transparent - we specialize in exactly those areas. We've been working with mid-sized B2B companies for 8 years now, and we have over 500 active clients. I can share some case studies from companies in your industry if you'd like to see real results.
+That's really useful. If you had to put a number on it — how much does the current approach cost you in time or resource per week?
 ```
-
-### Address Skepticism Directly
 ```
-I know social proof isn't everything though. What specific concerns do you have about implementing a new system? Is it disruption to current workflows, data security, vendor reliability, or something else?
+And what would it mean for the business if that cost was cut significantly? Walk me through what the impact would be.
 ```
 
-### Provide Evidence
+### Phase 3 — Value Presentation
 ```
-Fair concerns. For security, we're SOC 2 Type II certified and GDPR compliant - I can send you our security documentation. For implementation, we do a phased rollout to minimize disruption, and our average customer satisfaction score is 4.7/5. We also have a no-questions-asked money-back guarantee for the first 60 days.
+What you've described is exactly the problem we solve. [Solution] specifically addresses [their cost issue]. Based on what you told me, our clients in similar situations typically save [specific metric] within [timeframe]. That saving typically covers the cost many times over.
 ```
-
-### Handle "Need to Think About It"
 ```
-Absolutely, this is a significant decision. What specific aspects do you need to evaluate? If it's technical capabilities, I can arrange a deep-dive demo with our product team. If it's references, I can connect you with 2-3 current clients in similar industries. What would help you feel confident?
+On investment — we have different tiers depending on team size and need. But before I quote anything, let me make sure I'm showing you the right fit. Can you tell me roughly how many people would be using this?
 ```
 
-### Closing
+### Phase 4 — Objection Handling
 ```
-How about we start with something low-risk? I can set up a technical demo where we walk through your exact use cases and you can grill our team with any questions. If after that you're still not convinced, we part ways as friends. Sound fair?
+I hear you on cost — that's a completely fair concern. Let me flip the frame for a second: you mentioned your team spends [X hours/cost] on this manually each week. The question isn't really "is this expensive?" — it's "is the current approach more expensive?" Would it help if I walked you through a quick ROI breakdown using your actual numbers?
 ```
-
----
-
-## ⚡ Persona 4: The Busy Executive (ADVANCED)
-**Best for:** Testing concise communication and time efficiency
-
-### Opening (Respect Their Time)
 ```
-Hi! I know you're incredibly busy, so I'll be brief and direct. Thanks for squeezing me in.
+And on the comparison with competitors — totally fair to compare. What I'd ask is that we compare the total picture, not just the headline price: support quality, implementation time, and what the real ROI looks like 6 months in. Would it be fair to evaluate on those terms?
 ```
 
-### Quick Discovery
+### Phase 5 — Closing
 ```
-Just to make sure I'm not wasting your time - you're currently looking to improve customer retention and sales efficiency, correct? What's the timeline you're working with for making a decision?
-```
-
-### Bottom-Line Value Prop
-```
-Perfect. Bottom line up front: we can help you increase customer retention by 25-30% and cut your sales cycle time in half. We work with 50+ companies in your space, and typical ROI is 5-6x within the first year. Want me to unpack that or should I just send you the executive summary?
-```
-
-### Handle "Send Me Information"
-```
-Will do. Quick question though - if the numbers make sense, what's your decision-making process look like? Is this something you'd evaluate personally or would you loop in other stakeholders?
-```
-
-### Address Decision Process
-```
-Got it. To make this efficient, what if I set up a 15-minute demo with you and your key stakeholders next week? We can hit the highlights, answer critical questions, and you'll have everything you need to make a call. Better than a bunch of back-and-forth emails.
-```
-
-### Handle "Too Busy Right Now"
-```
-I completely respect that. How about this - I'll send you a 2-minute video walkthrough and a one-page ROI breakdown. If it looks interesting, we pencil in 15 minutes next month when things slow down. If not, no worries. Does that work?
-```
-
-### Closing
-```
-When would be better for you - early Q1 or later in the quarter?
+Here's what I'd suggest: let's set up a free trial using your real data and workflows. You can measure the actual savings before committing to anything. No credit card, no lock-in. If the numbers don't work for you, you walk away with nothing lost. Shall we get that set up this week?
 ```
 
 ---
 
-## 🚀 Persona 5: The Innovator (INTERMEDIATE)
-**Best for:** Testing technical depth and innovation positioning
+## ⚡ Persona 3: The Busy Executive (INTERMEDIATE)
+**RAG Style:** Challenge | **Tone:** Formal | **Patience:** Very Low | **Decision Speed:** Fast
 
-### Opening
-```
-Hey! Excited to chat with you. I've heard you're pretty forward-thinking when it comes to sales tech. How's innovation treating you lately?
-```
+> **Scenario:** Senior director with 10 minutes. Didn't read your pre-call materials. Will cut you off if you ramble.
 
-### Discovery (Innovation Angle)
+### Phase 1 — Opening
 ```
-That's awesome. What's your current tech stack looking like? Are you using any AI or automation tools in your sales process?
+Good morning. I know your time is scarce so I'll be direct. Thank you for fitting me in.
 ```
 
-### Explore Their Vision
+### Phase 2 — Discovery
 ```
-Nice setup! Where do you see the biggest opportunity for innovation in your sales process? What's the next frontier you're exploring?
+To make sure I don't waste your time — can you tell me in one or two sentences what your biggest operational priority is right now and where you feel most stuck?
 ```
-
-### Present Innovation
 ```
-That's exactly where we've been focusing. Our platform leverages AI for predictive lead scoring and automated personalization at scale. We also have integrations with emerging tools like conversational AI and sentiment analysis. Have you experimented with any of that yet?
+Got it. What's stopping your team from solving that themselves? Is it a tool problem, a process problem, or a people problem?
 ```
 
-### Technical Deep Dive
+### Phase 3 — Value Presentation
 ```
-The AI engine analyzes historical customer data - purchase patterns, engagement signals, communication preferences - and scores leads based on likelihood to convert. It also auto-generates personalized outreach messages based on each prospect's industry, pain points, and behavioral data. Accuracy rate is around 85% for predicting high-value leads.
+Here's the bottom line: [Solution] can [specific outcome tied to their priority] within [realistic timeframe]. We work with companies at your scale and the typical result is [specific metric]. I can send you a one-page summary after this call — but is there one specific question you'd want answered before deciding if this is worth a follow-up?
 ```
-
-### Discuss Integration
 ```
-Great question. We have a REST API and webhook support, so you can connect pretty much anything. We also have pre-built connectors for Slack, Teams, Zapier, and most major CRMs. Some of our more technical clients even build custom workflows using our API. Are you doing anything particularly unique in your stack?
+The three things executives in your position have told us matter most: [Benefit 1 — efficiency/visibility], [Benefit 2 — speed/control], and [Benefit 3 — ROI/savings]. All three are measurable. Which of those is most relevant to what you're dealing with?
 ```
 
-### Future Roadmap
+### Phase 4 — Objection Handling
 ```
-We're actually beta-testing voice AI integration right now - think automatic call summaries and real-time coaching during calls. Also working on augmented analytics where the system proactively surfaces insights instead of you digging for them. Interested in early access to any of that?
+Understood — no lengthy demo. How about this: I'll send you a two-minute video and a one-page ROI summary today, tailored to your team size. If the numbers make sense, we schedule a focused 15-minute call with whoever needs to be there. No commitment until you've reviewed the data. Does that work?
+```
+```
+On implementation speed — I'll give you the honest answer, not the sales answer: for a team your size, typically [realistic timeframe]. The first week covers core features. Full rollout by week [X]. We handle migration. Does that fit your timeline?
 ```
 
-### Closing
+### Phase 5 — Closing
 ```
-Love your energy around this stuff. Want to jump on a technical deep-dive where we can show you the backend, APIs, and some of the bleeding-edge features? I can loop in our CTO if you want to really nerd out.
+My recommendation: I'll send the executive summary today — takes 3 minutes to read. If it makes sense, we put 15 minutes in the diary next week with whoever else needs to be involved. One meeting, everything they need to decide. When works better for you — early in the week or later?
 ```
+
+---
+
+## 🔍 Persona 4: The Detail Seeker (INTERMEDIATE)
+**RAG Style:** Curious | **Tone:** Formal | **Patience:** High | **Decision Speed:** Slow
+
+> **Scenario:** Technical evaluator assigned by their director. Has a list of questions. Not the final decision-maker but their recommendation carries significant weight.
+
+### Phase 1 — Opening
+```
+Good afternoon! Thank you for scheduling this — I'm looking forward to a thorough conversation. How are things going on your end?
+```
+
+### Phase 2 — Discovery
+```
+Before I show you anything, I'd like to understand your environment. Can you walk me through your current tech stack and what systems you're working with today?
+```
+```
+And how do those systems interact with each other? Are there any integration gaps or manual handoffs that cause you pain?
+```
+```
+You mentioned [specific thing they said]. Can you tell me more about that — what specifically breaks down and what the downstream impact is?
+```
+
+### Phase 3 — Value Presentation
+```
+Based on what you've described, here's how we address [specific integration gap]: [technical explanation]. We support [relevant integrations], with [data sync method], and the architecture looks like [brief description]. Does that match what you'd need for your setup?
+```
+```
+On the security and compliance side — we're [relevant certification], data is handled as [storage/access details], and you get [relevant controls]. I can share our technical documentation and architecture diagrams for your team to review. Would that be useful?
+```
+
+### Phase 4 — Objection Handling
+```
+Great question on the edge case. To be specific: [technical answer]. We actually have a dedicated [mechanism] that handles [the specific scenario they raised]. I can share the technical docs and a real example from a client with a similar setup — would that help your team validate it?
+```
+```
+On migration — we run a parallel period where both systems operate simultaneously for [X weeks]. Your team validates every data flow before cutover. Our average implementation satisfaction score is [X/5]. I can also connect you with a technical reference from a company with a similar environment if you'd like to hear their experience firsthand.
+```
+
+### Phase 5 — Closing
+```
+The best next step would be a technical deep-dive with our solutions architect — hands-on, using sample data that matches your actual use cases. Are there other people from your technical or IT team who should be part of that session? How does [specific day next week] look?
+```
+
+---
+
+## 🔴 Persona 5: The Skeptic (ADVANCED)
+**RAG Style:** Gotcha | **Tone:** Formal | **Trust:** Very Low | **Decision Speed:** Very Slow
+
+> **Scenario:** Experienced procurement professional. Has done research on you already including competitor comparisons. Came prepared to challenge every claim.
+
+### Phase 1 — Opening
+```
+Good morning. I appreciate you giving me some time. I'll be upfront — I'm here to understand your situation honestly and tell you whether we're genuinely a fit, not to pitch you. Fair enough?
+```
+
+### Phase 2 — Discovery
+```
+Before I make any claims about what we do, I'd like to understand your experience first. Have you evaluated solutions like this before? And if so, what disappointed you?
+```
+```
+I appreciate you sharing that — those are valid frustrations. If you could tell me the top two or three things a solution would actually need to do well for it to be worth your time — based on real experience, not marketing — what would those be?
+```
+```
+On [thing they mentioned] — can you tell me specifically what "actually working" would look like for your team? I want to make sure I'm addressing the real requirement, not a surface version of it.
+```
+
+### Phase 3 — Value Presentation
+```
+I'd rather show you evidence than make claims. Here's what I can back up: [Specific verifiable metric], verified through [methodology]. Specifically in situations like yours, [concrete outcome]. Rather than telling you we're great, I'd rather send you the full data so you can scrutinize the methodology yourself. Would that be more credible to you than me quoting a statistic?
+```
+```
+And instead of me telling you the ROI number, let me give you the tools to calculate it for your situation. [Explain the methodology]. Here's what you'd need to know about your current state to run the calculation — can you share those numbers?
+```
+
+### Phase 4 — Objection Handling
+```
+That's a completely fair concern and I'm glad you raised it. On [specific concern] — here are the facts: [specific, verifiable answer]. I'll send you the documentation and third-party audit reports. For references, I can connect you with clients in your industry — not cherry-picked ones, real conversations. Would that address the trust question?
+```
+```
+On "what's the catch" — I'll level with you. The catch is [honest weakness or implementation effort]. We don't hide it. What we offer instead is [honest mitigation, e.g. guarantee, proven process]. I'd rather earn your trust through accountability than through a polished pitch.
+```
+
+### Phase 5 — Closing
+```
+Here's what I'd suggest — zero pressure: let me send you the evidence package upfront so you can review it before any further meeting. That includes case studies, technical docs, and the methodology report. Meanwhile I'll arrange two or three reference calls with existing clients you can speak to directly. After that, if you want to go deeper, we schedule a technical session where your team can ask our hardest questions. If you're still not convinced, no hard feelings. Would that be a fair way to evaluate us?
+```
+
+---
+
+## 🚪 Persona 6: The Gatekeeper (INTERMEDIATE)
+**RAG Style:** Curious | **Tone:** Formal | **Decision Speed:** Very Slow | **Trust:** Medium
+
+> **Scenario:** Executive assistant or junior manager screening vendors for their boss. Has no authority to say yes, full authority to say no. Polite but deliberately non-committal.
+
+### Phase 1 — Opening
+```
+Good morning. Thank you for making time — I know you're here to gather information for your director, so I'll make this easy for you. How are you doing today?
+```
+
+### Phase 2 — Discovery
+```
+To help me give you the right information to pass along: can you tell me a bit about what's driving this evaluation? What problem is your director trying to solve?
+```
+```
+And in your view — what would make this an easy recommendation to pass upwards versus something that gets filtered out?
+```
+```
+That's helpful. What does your director typically care most about when evaluating a new solution — is it cost, speed of results, ease of use, or something else?
+```
+
+### Phase 3 — Value Presentation
+```
+Based on what you've described, here's what I'd suggest you highlight when briefing your director: [Key benefit 1] specifically addresses [their stated priority], and [Key benefit 2] reduces the risk that typically concerns decision-makers at this level. I can prepare a brief one-pager formatted for an executive audience — would that make your job easier?
+```
+```
+And if your director has a specific question you think would come up, I'd rather answer it now so you can go into that conversation fully prepared. What do you think they'd push back on?
+```
+
+### Phase 4 — Objection Handling
+```
+Completely understood — you can't commit to anything right now. That's exactly right. I'm not asking for commitment. I'm just making sure you have everything you need to have a productive conversation with your director. What specific information would make that conversation go well?
+```
+```
+On the timing concern — I understand your director has a packed schedule. What I'd suggest is simply a 15-minute slot. I'll send a pre-read so they can decide in advance whether it's worth their time. That minimises risk for everyone. Would that be something you could propose?
+```
+
+### Phase 5 — Closing
+```
+Here's what I'll do: I'll send a brief executive summary — two pages maximum, formatted for a senior audience — that covers the key points your director would care about. If it resonates with them, the natural next step is a short focused call. Would it be okay if I followed up with you in a week to see if they've had a chance to review it?
+```
+
+---
+
+## 🏆 Persona 7: The Competitor Loyalist (ADVANCED)
+**RAG Style:** Gotcha | **Tone:** Casual | **Decision Speed:** Very Slow | **Trust:** Low
+
+> **Scenario:** Satisfied with their current vendor of 3 years. Not actively looking to switch. Gave you 15 minutes out of mild curiosity. Needs a genuinely compelling reason to even consider this.
+
+### Phase 1 — Opening
+```
+Hey, appreciate you taking the call. I'll be upfront — I know you've been with your current vendor for a while and you're not actively shopping. I'm not here to convince you you need to switch. I just want to understand your situation and be honest about whether there's a real reason to explore further.
+```
+
+### Phase 2 — Discovery
+```
+Can you tell me a bit about your current setup? What's working well, and if you're being honest — are there any parts that you wish were better?
+```
+```
+That's interesting — you mentioned [thing they said]. If you could wave a magic wand and fix that one thing without the disruption of switching, what would it look like?
+```
+```
+And over the years you've worked with your current vendor — are there moments where you've thought "I wish they did X"? I'm not asking to sell you, I'm trying to understand if there's a genuine gap.
+```
+
+### Phase 3 — Value Presentation
+```
+Let me be specific rather than vague. On [the gap they mentioned] — here's exactly how we handle that differently: [concrete specific answer]. I'm not saying we're better across the board — I'm saying on that particular thing, here's what the difference looks like in practice. Does that actually matter to your team day-to-day?
+```
+```
+I'll also acknowledge what your current vendor does well — [genuine acknowledgement]. So the real question is: is the gap I just described worth exploring further, or is it a nice-to-have that doesn't change your calculus?
+```
+
+### Phase 4 — Objection Handling
+```
+The switching cost question is the right one to ask. I won't pretend it's zero — it's not. Realistically, a switch takes [honest timeline] and requires [honest level of effort] from your team. What I'd ask is: over [timeframe], does the improvement in [specific area] justify that cost? I'm not asking you to decide now — just whether it's worth stress-testing the assumption that staying is the better option.
+```
+```
+On the "you're just saying you're better" concern — fair. I'd rather show you than tell you. What if we ran a side-by-side comparison on one specific use case your team does every week? You'd see the actual difference, not my word for it.
+```
+
+### Phase 5 — Closing
+```
+I'm not asking you to switch. I'm asking whether what I've shown you today is interesting enough to do a proper evaluation — side by side, your real workflow, your real data. If it's not better in a way that actually matters to your team, you'll have confirmed your current choice was right. If it is better, you'll have a decision to make with real information. Would a structured two-week pilot be worth your time to find out?
+```
+
+---
+
+## 🏠 Persona 8: The Overwhelmed Owner (BEGINNER)
+**RAG Style:** Curious | **Tone:** Casual | **Tech Savviness:** Low | **Patience:** High
+
+> **Scenario:** Small business owner doing everything themselves. Has been burned by overcomplicated software before. Needs simplicity above all else.
+
+### Phase 1 — Opening
+```
+Hi! Really appreciate you taking some time out of what I'm sure is a busy day. How are things going with the business right now?
+```
+
+### Phase 2 — Discovery
+```
+Tell me a bit about how things run day-to-day for you. What does a typical week look like, and where do you feel like you're losing the most time?
+```
+```
+That makes total sense. And have you tried using any tools or software to help with that before? What happened?
+```
+```
+I hear you on the complexity thing — that's actually the number one thing small business owners tell us. If a tool isn't up and running and useful within [short timeframe], most people never use it. Would it help if I was really honest with you about how long ours actually takes to set up?
+```
+
+### Phase 3 — Value Presentation
+```
+Here's what I want to be honest about: [Solution] is designed specifically for people running a business without a dedicated IT team. You don't need technical knowledge to use it. Setup takes [realistic time], and after that, the main things you'll use every day are [2-3 simple things]. Most of our small business customers are up and running on their own within [timeframe].
+```
+```
+The thing that matters most to owners in your position is: does it actually free up your time? Here's what I can tell you specifically — [concrete time-saving or outcome relevant to their problem]. The goal isn't to add a new thing to learn. It's to take things off your plate.
+```
+
+### Phase 4 — Objection Handling
+```
+That's completely fair — you've been burned before. Can I ask what specifically made the last one so hard to use? I want to understand whether we'd hit the same wall or whether it's genuinely a different experience. And if it is the same issue, I'd rather tell you that now than waste your time.
+```
+```
+On the "what if I get stuck" question — we have [specific support option: phone, chat, etc.] available [specific hours]. And honestly, the questions most first-time users have are [types of simple questions], and we have [specific resource — video library, step-by-step guides] that walk you through exactly those things. Would it help if I showed you what that looks like?
+```
+
+### Phase 5 — Closing
+```
+Here's what I'd suggest: try it free for [X days] with your real business data. No setup fee, no credit card, and I'll personally check in with you a week in to make sure it's actually working for you — not just installed. If it's not simpler and more useful than what you were doing before, you stop and there's nothing lost. Does that feel like a fair way to try it?
+```
+
+---
+
+## 🧪 Testing RAG Document Behaviour
+
+**How to test if the AI is using your uploaded documents:**
+
+1. **Upload a company document** via the platform (product brochure, sales playbook, etc.)
+2. **Start a session** with a "Challenge" or "Gotcha" persona (The Budget Hunter, The Skeptic, or The Competitor Loyalist)
+3. **Deliberately say something that contradicts the document** — e.g. if the doc says implementation takes 6 weeks, tell the AI it takes 2 weeks
+4. **Observe:** does the persona catch the inconsistency and push back?
+
+**What good RAG behaviour looks like:**
+- 🟢 "Challenge" style: *"I actually read your materials before this call and I thought it said [X]. You just said [Y]. Which is accurate?"*
+- 🟢 "Curious" style: *"I saw something about [feature] in your documentation — can you explain how that actually works in practice?"*
+- 🟢 "Gotcha" style: *"Your materials mention [X] but are quite vague about [edge case]. What happens when [scenario]?"*
+
+**What poor RAG behaviour looks like (report these):**
+- 🔴 Persona quotes the document verbatim — sounds robotic
+- 🔴 Persona never references the document even after a clear contradiction
+- 🔴 Persona raises document-based challenges at phase 1 (too early — should be discovery/objection phase)
 
 ---
 
 ## 📊 Testing Checklist
 
-For each persona, test:
-- [ ] Natural rapport building
-- [ ] Appropriate responses to discovery questions
-- [ ] Objection handling based on persona traits
-- [ ] Closing behavior
-- [ ] Conversation length (aim for 8-12 messages)
+For each persona session verify:
 
-**Tip:** Don't rush! Send messages one at a time and read the AI's responses. Adjust your approach based on their reactions - just like a real sales call.
+**AI Persona Behaviour**
+- [ ] Stayed in character throughout — no product-specific bleed-through
+- [ ] Raised configured objections at the right phase
+- [ ] Difficulty felt appropriate (beginner = warm, advanced = genuinely tough)
+- [ ] Trigger topics caused strong, specific reactions
+- [ ] RAG-informed challenges felt natural (not quoted verbatim)
+
+**Scoring Balance**
+- [ ] Rapport: 0–20 — were greetings and empathy recognised?
+- [ ] Discovery: 0–20 — were open-ended questions rewarded?
+- [ ] Presentation: 0–20 — was specific value linking scored?
+- [ ] Objection: 0–20 — was evidence-based handling recognised?
+- [ ] Closing: 0–20 — was a concrete next step proposed?
 
 ---
 
-## ⚙️ Product Background (For Context)
+## 🔑 Keyword Guide
 
-**What you're selling:** Cloud-based CRM (Customer Relationship Management) software
+Use these naturally in your messages — the NLP evaluator looks for them.
 
-**Key Features:**
-- Centralized customer data
-- Automated follow-ups
-- Team collaboration tools  
-- Real-time reporting & analytics
-- Mobile app
-- Integration with popular tools
-
-**Pricing Tiers:**
-- Starter: $99/month
-- Professional: $199/month  
-- Enterprise: Custom
-
-**Value Props:**
-- 30% improvement in customer retention
-- 15-20 hours saved per team member/week
-- 25-30% increase in sales efficiency
-- 5-6x ROI in first year
-
-Use this info to answer specific questions!
+| Category | Keywords |
+|----------|---------|
+| **Rapport** | `thank you` · `appreciate` · `I understand` · `I hear you` · `that makes sense` · `tell me more` · `glad to hear` · `absolutely` |
+| **Discovery** | `what challenges` · `tell me about` · `how do you currently` · `walk me through` · `help me understand` · `pain point` · `goal` · `currently` · `priority` |
+| **Presentation** | `benefit` · `solution` · `ROI` · `save` · `improve` · `increase` · `reduce` · `efficiency` · `value` · `results` · `outcome` |
+| **Objection** | `I understand your concern` · `let me address that` · `fair point` · `here's what we can do` · `guarantee` · `case study` · `evidence` · `data` · `proof` |
+| **Closing** | `next step` · `schedule` · `demo` · `move forward` · `get started` · `follow up` · `trial` · `shall we` · `let me send you` |

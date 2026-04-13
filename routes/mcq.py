@@ -267,10 +267,12 @@ def delete_mcq_test(
         )
     
     try:
+        # Delete all related attempts first
+        attempt_count = db.query(MCQAttempt).filter(MCQAttempt.test_id == test_id).delete()
         db.delete(test)
         db.commit()
-        print(f"🗑️ Deleted test {test_id}: {test.title}")
-        return {"success": True, "message": "Test deleted successfully"}
+        print(f"🗑️ Deleted test {test_id}: {test.title} (and {attempt_count} attempts)")
+        return {"success": True, "message": f"Test and {attempt_count} related attempts deleted successfully"}
     except Exception as e:
         db.rollback()
         print(f"❌ Error deleting test {test_id}: {e}")

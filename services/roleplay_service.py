@@ -1,9 +1,11 @@
 """
 Roleplay service for session and conversation management
 Handles session creation, message storage, and AI response generation
+Now powered by the multi-agent orchestrator.
 """
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone
 from models.roleplay import (
     RoleplayPersona, 
@@ -12,10 +14,19 @@ from models.roleplay import (
     SessionStatus,
     MessageSender
 )
-from roleplay.llm_client import generate_customer_response
-from roleplay.evaluator import evaluate_session_conversation
+from roleplay.orchestrator import get_orchestrator
 from models.roleplay import RoleplayEvaluation
+from roleplay.nlp_evaluator import NLPEvaluator
 import json
+
+# Singleton NLP evaluator — avoids reloading heavy ML models per call
+_nlp_evaluator_instance = None
+
+def _get_nlp_evaluator():
+    global _nlp_evaluator_instance
+    if _nlp_evaluator_instance is None:
+        _nlp_evaluator_instance = NLPEvaluator()
+    return _nlp_evaluator_instance
 
 
 def create_session(
@@ -42,11 +53,14 @@ def create_session(
     if not persona:
         raise ValueError(f"Persona with id {persona_id} not found")
     
-    # Create persona snapshot
+    # Create persona snapshot (captures full state so sessions survive persona re-seeding)
     persona_snapshot = {
         "name": persona.name,
         "description": persona.description,
+        "scenario_brief": getattr(persona, 'scenario_brief', None) or "",
         "personality_traits": persona.personality_traits,
+        "trigger_topics": getattr(persona, 'trigger_topics', None) or {},
+        "company_context": getattr(persona, 'company_context', None) or {},
         "common_objections": persona.common_objections,
         "tone": persona.tone,
         "difficulty": persona.difficulty
@@ -142,7 +156,8 @@ def generate_ai_response(
     trainee_message: str
 ) -> Dict[str, Any]:
     """
-    Generate AI customer response to trainee message
+    Generate AI customer response to trainee message using the
+    multi-agent orchestrator.
     
     Args:
         db: Database session
@@ -150,7 +165,7 @@ def generate_ai_response(
         trainee_message: Message from trainee
     
     Returns:
-        Dict with response text and message IDs
+        Dict with response text, message IDs, stage_info, coaching_hint
     """
     
     # Get session
@@ -173,12 +188,17 @@ def generate_ai_response(
         RoleplayMessage.id < trainee_msg.id
     ).order_by(RoleplayMessage.sequence_number).all()
     
-    # Generate AI response
+    # Run multi-agent orchestrator
     try:
-        ai_response_text = generate_customer_response(
+        orchestrator = get_orchestrator()
+        
+        result = orchestrator.process_message(
             persona=persona,
-            history=history,
-            trainee_message=trainee_message
+            messages=history,
+            trainee_message=trainee_message,
+            session_id=session_id,
+            org_id=session.organization_id,
+            total_message_count=session.total_messages,
         )
     except Exception as e:
         # Rollback trainee message if AI generation fails
@@ -187,12 +207,26 @@ def generate_ai_response(
         raise Exception(f"Failed to generate AI response: {str(e)}")
     
     # Save AI response
-    ai_msg = add_message(db, session_id, MessageSender.AI_CUSTOMER.value, ai_response_text)
+    ai_msg = add_message(db, session_id, MessageSender.AI_CUSTOMER.value, result["response"])
+    
+    # Save stage snapshot on the AI message for analytics/replay
+    stage_info = result.get("stage_info")
+    if stage_info:
+        ai_msg.stage_snapshot = stage_info
+        db.commit()
     
     return {
-        "response": ai_response_text,
+        "response": result["response"],
         "trainee_message_id": trainee_msg.id,
-        "ai_message_id": ai_msg.id
+        "ai_message_id": ai_msg.id,
+        "stage_info": stage_info,
+        "coaching_hint": result.get("coaching_hint"),
+        "eq_data": result.get("eq_data"),
+        "accuracy_data": result.get("accuracy_data"),
+        "lstm_risk": result.get("lstm_risk"),
+        "conversion_data": result.get("conversion_data"),
+        "trained_models": result.get("trained_models"),
+        "deal_intelligence": result.get("deal_intelligence"),
     }
 
 
@@ -267,7 +301,6 @@ def evaluate_session_nlp(
     Returns:
         NLP evaluation results
     """
-    from roleplay.nlp_evaluator import NLPEvaluator
     
     # Get conversation history
     messages = get_conversation_history(db, session_id)
@@ -286,8 +319,8 @@ def evaluate_session_nlp(
         for msg in messages
     ]
     
-    # Run NLP evaluation (fast!)
-    nlp_evaluator = NLPEvaluator()
+    # Run NLP evaluation (fast!) — uses singleton to avoid model reloads
+    nlp_evaluator = _get_nlp_evaluator()
     nlp_results = nlp_evaluator.evaluate(message_dicts)
     
     return nlp_results
@@ -298,8 +331,9 @@ def evaluate_session(
     session_id: int
 ) -> RoleplayEvaluation:
     """
-    Evaluate a completed roleplay session with LLM qualitative feedback
-    (NLP scores should already be available via evaluate_session_nlp)
+    Evaluate a completed roleplay session with multi-agent pipeline.
+    Uses Performance Analytics Agent for LLM qualitative feedback,
+    NLP scores from the NLP evaluator.
     
     Args:
         db: Database session
@@ -319,8 +353,6 @@ def evaluate_session(
     
     # Check if already evaluated
     existing_eval = db.query(RoleplayEvaluation).filter_by(session_id=session_id).first()
-    if existing_eval:
-        return existing_eval
     
     # Get conversation history
     messages = get_conversation_history(db, session_id)
@@ -334,35 +366,111 @@ def evaluate_session(
             f"but only found {len(messages)} message(s)."
         )
     
-    # Get persona
+    # Get persona - fall back to persona_snapshot if original persona was replaced
     persona = db.query(RoleplayPersona).filter_by(id=session.persona_id).first()
+    if not persona and session.persona_snapshot:
+        class SnapshotPersona:
+            pass
+        persona = SnapshotPersona()
+        snapshot = session.persona_snapshot
+        persona.name = snapshot.get("name", "Unknown Persona")
+        persona.description = snapshot.get("description", "")
+        persona.personality_traits = snapshot.get("personality_traits", {})
+        persona.common_objections = snapshot.get("common_objections", [])
+        persona.tone = snapshot.get("tone", "casual")
+        persona.difficulty = snapshot.get("difficulty", "intermediate")
+        persona.scenario_brief = snapshot.get("scenario_brief", "")
+        persona.trigger_topics = snapshot.get("trigger_topics", {})
+        persona.company_context = snapshot.get("company_context", {})
     
     # Step 1: Get NLP scores (fast, objective)
     nlp_results = evaluate_session_nlp(db, session_id)
     
-    # Step 2: Get LLM qualitative feedback (slow, subjective)
+    # Step 2: Get LLM qualitative feedback via Performance Agent
     try:
-        llm_feedback = evaluate_session_conversation(messages, persona)
+        orchestrator = get_orchestrator()
+        llm_feedback = orchestrator.process_evaluation(
+            persona=persona,
+            messages=messages,
+            org_id=session.organization_id,
+            session_id=session_id,
+        )
     except Exception as e:
         raise Exception(f"LLM evaluation failed: {str(e)}")
     
     # Combine both evaluations
-    evaluation = RoleplayEvaluation(
-        session_id=session_id,
-        overall_score=nlp_results['overall_score'],  # From NLP
-        category_scores=nlp_results['category_scores'],  # From NLP
-        summary=llm_feedback.get('summary'),  # From LLM
-        strengths=llm_feedback['strengths'],  # From LLM
-        improvement_areas=llm_feedback['improvements'],  # From LLM (note: field name is improvement_areas)
-        nlp_metrics=nlp_results['detailed_metrics'],  # Full NLP breakdown
-        detailed_feedback={  # Combined for reference
-            'nlp': nlp_results,
-            'llm': llm_feedback
-        }
-    )
+    # Hybrid scoring: blend NLP scores (60%) with LLM scores (40%) when available
+    llm_category_scores = llm_feedback.get('llm_category_scores', {})
+    final_category_scores = nlp_results['category_scores'].copy()
     
-    db.add(evaluation)
-    db.commit()
-    db.refresh(evaluation)
+    if llm_category_scores:
+        for cat_key in final_category_scores:
+            if cat_key in llm_category_scores:
+                nlp_val = final_category_scores[cat_key]
+                llm_val = llm_category_scores[cat_key]
+                # Weighted blend: 60% NLP (objective) + 40% LLM (contextual)
+                final_category_scores[cat_key] = round(nlp_val * 0.6 + llm_val * 0.4)
     
-    return evaluation
+    final_overall_score = sum(final_category_scores.values())
+    
+    detailed_feedback = {
+        'nlp': nlp_results,
+        'llm': llm_feedback,
+        'hybrid_scores': final_category_scores,
+        'coaching_tip': llm_feedback.get('coaching_tip', ''),
+        'category_feedback': llm_feedback.get('category_feedback', {}),
+        'stage_performance': llm_feedback.get('stage_performance', {}),
+        'missed_opportunities': llm_feedback.get('missed_opportunities', []),
+        'eq_summary': llm_feedback.get('eq_summary', {}),
+        'replay': llm_feedback.get('replay', {}),
+        'conversion_trajectory': llm_feedback.get('conversion_trajectory', {}),
+    }
+    
+    if existing_eval:
+        # Update existing evaluation
+        existing_eval.overall_score = final_overall_score
+        existing_eval.category_scores = final_category_scores
+        existing_eval.summary = llm_feedback.get('summary')
+        existing_eval.strengths = llm_feedback['strengths']
+        existing_eval.improvement_areas = llm_feedback['improvements']
+        existing_eval.nlp_metrics = nlp_results['detailed_metrics']
+        existing_eval.detailed_feedback = detailed_feedback
+        db.commit()
+        db.refresh(existing_eval)
+        orchestrator.clear_session_cache(session_id)
+        return existing_eval
+    else:
+        evaluation = RoleplayEvaluation(
+            session_id=session_id,
+            overall_score=final_overall_score,
+            category_scores=final_category_scores,
+            summary=llm_feedback.get('summary'),
+            strengths=llm_feedback['strengths'],
+            improvement_areas=llm_feedback['improvements'],
+            nlp_metrics=nlp_results['detailed_metrics'],
+            detailed_feedback=detailed_feedback,
+        )
+        db.add(evaluation)
+        try:
+            db.commit()
+        except IntegrityError:
+            # Race condition: a concurrent request already inserted — update instead
+            db.rollback()
+            existing_eval = db.query(RoleplayEvaluation).filter_by(session_id=session_id).first()
+            if existing_eval:
+                existing_eval.overall_score = final_overall_score
+                existing_eval.category_scores = final_category_scores
+                existing_eval.summary = llm_feedback.get('summary')
+                existing_eval.strengths = llm_feedback['strengths']
+                existing_eval.improvement_areas = llm_feedback['improvements']
+                existing_eval.nlp_metrics = nlp_results['detailed_metrics']
+                existing_eval.detailed_feedback = detailed_feedback
+                db.commit()
+                db.refresh(existing_eval)
+                orchestrator.clear_session_cache(session_id)
+                return existing_eval
+            raise
+        db.refresh(evaluation)
+        orchestrator.clear_session_cache(session_id)
+        return evaluation
+

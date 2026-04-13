@@ -10,17 +10,31 @@ import json
 
 class OllamaClient:
     """Client for direct Ollama API calls"""
-    
+
     def __init__(
         self,
         base_url: str = None,
         model: str = None,
-        temperature: float = None
+        temperature: float = None,
+        num_gpu: int = None,
     ):
         self.base_url = base_url or settings.LOCAL_LLM_BASE_URL
-        self.model = model or settings.LOCAL_LLM_MODEL
+        self.model = model or getattr(settings, 'ROLEPLAY_LLM_MODEL', settings.LOCAL_LLM_MODEL)
         self.temperature = temperature or settings.LOCAL_LLM_TEMPERATURE
+        self.num_gpu = num_gpu if num_gpu is not None else getattr(settings, 'LLM_NUM_GPU', 99)
         self.chat_endpoint = f"{self.base_url}/api/chat"
+
+    def unload_model(self, model_name: str = None):
+        """Unload a model from VRAM to free space for another."""
+        target = model_name or self.model
+        try:
+            requests.post(
+                f"{self.base_url}/api/generate",
+                json={"model": target, "keep_alive": 0},
+                timeout=10,
+            )
+        except Exception:
+            pass  # Best-effort — model may already be unloaded
     
     def generate_response(
         self,
@@ -50,7 +64,8 @@ class OllamaClient:
             "stream": False,
             "options": {
                 "temperature": self.temperature,
-                "num_predict": max_tokens
+                "num_predict": max_tokens,
+                "num_gpu": self.num_gpu
             }
         }
         
@@ -99,7 +114,8 @@ class OllamaClient:
             "stream": True,
             "options": {
                 "temperature": self.temperature,
-                "num_predict": max_tokens
+                "num_predict": max_tokens,
+                "num_gpu": self.num_gpu
             }
         }
         
@@ -133,7 +149,8 @@ class OllamaClient:
 def generate_customer_response(
     persona,
     history: list,
-    trainee_message: str
+    trainee_message: str,
+    org_id: int = None
 ) -> str:
     """
     Generate customer response using Ollama
@@ -142,14 +159,15 @@ def generate_customer_response(
         persona: RoleplayPersona instance
         history: List of previous messages
         trainee_message: Latest trainee message
+        org_id: Organization ID for document context retrieval
     
     Returns:
         Generated customer response
     """
     from roleplay.prompts import build_customer_prompt
     
-    # Build prompts
-    prompt_data = build_customer_prompt(persona, history, trainee_message)
+    # Build prompts (with document context if org_id provided)
+    prompt_data = build_customer_prompt(persona, history, trainee_message, org_id=org_id)
     
     # Call Ollama
     client = OllamaClient()
@@ -165,7 +183,8 @@ def generate_customer_response(
 def stream_customer_response(
     persona,
     history: list,
-    trainee_message: str
+    trainee_message: str,
+    org_id: int = None
 ) -> Generator[str, None, None]:
     """
     Stream customer response using Ollama
@@ -174,14 +193,15 @@ def stream_customer_response(
         persona: RoleplayPersona instance
         history: List of previous messages
         trainee_message: Latest trainee message
+        org_id: Organization ID for document context retrieval
     
     Yields:
         Response chunks
     """
     from roleplay.prompts import build_customer_prompt
     
-    # Build prompts
-    prompt_data = build_customer_prompt(persona, history, trainee_message)
+    # Build prompts (with document context if org_id provided)
+    prompt_data = build_customer_prompt(persona, history, trainee_message, org_id=org_id)
     
     # Stream from Ollama
     client = OllamaClient()
@@ -190,3 +210,4 @@ def stream_customer_response(
         user_message=prompt_data["user_message"]
     ):
         yield chunk
+

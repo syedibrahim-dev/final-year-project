@@ -1,0 +1,242 @@
+==============================================================================
+   ROLEPLAY MODULE — VIVA CHEAT SHEET (print double-sided, A4)
+==============================================================================
+
+------------------------------ THE ONE DIAGRAM -------------------------------
+
+  TRAINEE INPUT
+       |
+       v
+  +-----------------+
+  | Guardrail Agent |  rules-only: prompt injection, length, profanity
+  +--------+--------+
+           | (clean)
+           v
+  +---------------+  +---------------+  +---------------+
+  |   ENGINE A    |  |   ENGINE B    |  |  RAG Pipeline |
+  | DeBERTa NLI   |  | Emotion-RoBERT|  |   ChromaDB    |
+  | (objection,   |  |   + GoEmot.   |  |  org's docs   |
+  | active list.) |  | (empathy, prs)|  |               |
+  +-------+-------+  +-------+-------+  +-------+-------+
+          |                  |                  |
+          +----------+-------+------------------+
+                     v
+          +--------------------------+
+          | 6 DistilBERT Classifiers |  -> 27-dim feature vector per turn
+          | C1..C6                   |     (state, willingness, objection,
+          +-----------+--------------+      emotion, position, resolved, spkr)
+                      v
+          +--------------------------+
+          | LSTM Risk Model          |  reads SEQUENCE of vectors
+          | 2-layer h=64 dropout=0.3 |  -> P(deal failure) + trend
+          +-----------+--------------+
+                      v
+          +--------------------------+
+          | ENGINE C - Llama 3.1 8B  |  Persona Agent generates AI customer
+          | Q8_0 via Ollama          |  reply using all signals above
+          +-----------+--------------+
+                      v
+                AI CUSTOMER REPLY  + (async) SalesRLAgent PPO subprocess
+
+
+------------------------------ THE 3 ENGINES ---------------------------------
+
+A  DeBERTa NLI         Zero-shot intent / objection / active listening   ~25ms
+B  Emotion-RoBERTa+GE  Empathy + emotion + pressure level                ~15ms
+C  Llama 3.1 8B Q8_0   Reasoning, persona reply, coaching                ~3-5s
+
+
+------------------------------ THE 9 AGENTS ----------------------------------
+
+PER-MESSAGE (every turn):
+  1. Guardrail        rules    block bad input
+  2. EQ               A+B      0-100 EQ score (empathy/listening/pressure)
+  3. Knowledge        RAG      fact-check trainee claims vs org docs
+  4. Objection Inject rules    decide if AI raises an objection this turn
+  5. Adaptive Diff    rules    warm/cool persona based on EQ trajectory
+  6. Persona          C        the AI customer's reply (1 LLM call)
+  7. Analyst          C/skipN  stage detection + coaching hints
+
+ASYNC (subprocess, non-blocking):
+  8. SalesRLAgent     PPO RL   live deal probability
+
+POST-SESSION:
+  9a. Performance     C        category scores + summary + coaching tip
+  9b. Replay          C        annotated transcript + alternative responses
+  9c. SalesRL Full    PPO RL   turn-by-turn conversion trajectory
+
+
+------------------------ THE 6 CLASSIFIERS (DistilBERT) ----------------------
+
+#  Task                    Labels                              Acc   Data
+-- ----------------------- ----------------------------------- ----- ------
+C1 Objection detection     8: price/timing/auth/need/trust/    92.1% 4,181
+                              value/fairness/not_objection            CaSiNo
+C2 Response handling       3: resolved/deflected/escalated     82.7% 795
+                                                                      CaSiNo
+C3 Emotion+Pressure        8: pos/neg/neut/empathetic/anxious/ 84.4% 25,000
+                              consultative/urgent/demanding           5 srcs
+C4 Outcome predictor       2: converted/failed                 81.3% 3,425
+C5 Sales state             6: interest/trust/objection/eval/   85.1% 18,236
+                              decision/drop_off_risk
+C6 Willingness             3: engaged/neutral/disengaged       82.6% 13,148
+
+All six: DistilBERT-base-uncased (67M), weighted CE loss, context windows
+(C5+C6), minority oversampling.
+
+
+------------------------ THE LSTM RISK MODEL --------------------------------
+
+Architecture:  LSTM(in=27, h=64, layers=2, dropout=0.3) -> Linear(64->1)
+Input:         27-dim vector per turn
+               6 state + 3 willingness + 7 objection + 8 emotion +
+               1 position + 1 resolved + 1 speaker
+Training:      1,000 SaaS conversations (DeepMost), ~12K partial sequences
+               via partial-sequence training trick (turns 1..N at each step)
+               Position-weighted loss (later turns matter more)
+               30 epochs, Adam, max seq=30, pack_padded_sequence
+Results:       Overall acc 58.3%
+               AUC-ROC 0.65
+               LATE-TURN ACC 70.6%   <- THE NUMBER THAT MATTERS
+               <5ms inference on CPU
+Trend:         compares risk_now vs risk 2 turns ago, threshold 0.08
+
+WHY: per-turn classifiers miss DRIFT. Engagement can be high right now but
+falling over time. The LSTM catches trajectory; classifiers catch snapshots.
+
+
+------------------------- THE 9 DATASETS ------------------------------------
+
+#  Dataset                Source            Size      Used by   Year
+-- ---------------------- ----------------- --------- --------- ----
+1  CaSiNo                 NAACL 2021        1,030 dlg C1, C2    2021
+2  GoEmotions             ACL 2020          43K       C3        2020
+3  dair-ai/emotion        EMNLP 2018        16K       C3        2018
+4  ESConv                 ACL 2021          25K       C3        2021
+5  DeepMost SaaS          HuggingFace       1,000     C3-6+LSTM 2025
+6  CraigslistBargains     DialogStudio      3,946     C4, C5    -
+7  goendalf666/sales      HuggingFace       3,411     C4        -
+8  gwenshap/sales-tx      HuggingFace       50        C5        -
+9  Claude Opus B2B        Generated         20        C5/C6+val -
+
+WHY MULTI-SOURCE NOT SYNTHETIC:
+  1. Distributional diversity (each dataset = different conversation type)
+  2. Peer-reviewed provenance (NAACL, ACL, EMNLP - citable)
+  3. Non-circular validation (Claude Opus held out, never seen in training)
+  4. Complementary coverage (no single dataset covers all dimensions)
+
+
+------------------------ CLAUDE OPUS VALIDATION -----------------------------
+
+Out-of-distribution validation on 10 unseen B2B conversations:
+
+  Emotion       91.7%   <- strongest
+  Pressure      73.3%
+  Outcome       60.0%
+  Objection     56.7%
+  Willingness   48.3%
+  Sales State   31.7%   <- weakest (humans disagree too)
+  OVERALL       57.8%   <- the honest number
+
+DEFENCE: "57.8% on out-of-distribution data is meaningful because it proves
+classifiers generalise BEYOND training distribution. Sales state is weak
+because even human annotators disagree on labels - it's intersubjective."
+
+
+------------------------ HYBRID 3-TIER EVALUATION ---------------------------
+
+Tier 1: NLP rules    (questions, keywords, flow)
+Tier 2: ML/NLP       (sentiment, NER, dialogue acts)  -> merged into T1
+Tier 3: LLM          (Performance Agent + Replay Agent)
+
+  FINAL = 60% NLP + 40% LLM   (per category, 0-100)
+
+5 categories scored: Discovery / Active Listening / Objection Handling /
+Value Articulation / Closing & Next Steps. Each 0-20, summed to 0-100.
+
+WHY BLEND: LLMs biased toward niceness (everyone gets 80). NLP biased toward
+keyword stuffing. Together they're more honest than either alone.
+
+
+------------------------ TOP 6 VIVA Q&A -------------------------------------
+
+Q1. Why not just use ChatGPT to roleplay?
+A.  Privacy (local Ollama, sales data never leaves), consistency (persona
+    drift in raw GPT, ours has explicit personality dimensions), measurable
+    feedback (we built the 3-tier evaluation; ChatGPT doesn't grade you).
+
+Q2. Why fine-tune 6 small classifiers instead of one big LLM?
+A.  Speed (CPU, <100ms total vs 3-5s LLM), cost (LLM only fires when we
+    need generation), determinism (classifiers reproducible, LLMs vary),
+    auditability (we can cite a classifier output, can't cite a hallucin.)
+
+Q4. What's the LSTM doing that the classifiers can't?
+A.  Classifiers see ONE turn. LSTM sees the SEQUENCE. A conversation can
+    have good per-turn signals but a falling trajectory. Late-turn accuracy
+    70.6% means it catches drift when it matters most.
+
+Q6. Why hybrid evaluation? Why not just trust the LLM?
+A.  LLMs grade everyone 75-85 (niceness bias). NLP rewards keyword stuffing.
+    60/40 blend is more honest than either alone. Two assessors > one.
+
+Q8. What if Ollama dies mid-conversation?
+A.  Persona Agent returns error, frontend shows clean message, session
+    preserved in DB. Classifiers + LSTM keep working (no Ollama dependency).
+    Post-session evaluation can be re-run when Ollama is back.
+
+Q11. What's the per-turn latency budget?
+A.  Guardrail 5ms + EQ 50ms + Knowledge 200ms + small agents 10ms +
+    classifiers 80ms + LSTM 5ms + PERSONA AGENT 3-5s (bottleneck) =
+    end-to-end ~3.5-5.5s. SalesRL subprocess doesn't block.
+
+
+------------------------ KEY NUMBERS TO MEMORIZE ----------------------------
+
+  Llama 3.1 8B Q8_0       22 GPU layers + 11 CPU layers
+  Embedding model         nomic-embed-text (768-dim)
+  Chunking                500 tokens, 50 overlap
+  6 classifiers           DistilBERT-base-uncased (67M params)
+  LSTM                    2-layer, hidden=64, dropout=0.3, 27-dim input
+  LSTM AUC-ROC            0.65
+  LSTM late-turn acc      70.6%
+  Final eval blend        60% NLP + 40% LLM
+  Total datasets          9 (4 academic + 4 community + 1 frontier)
+  Personas                8 (3 difficulty tiers)
+  Categories scored       5 (each 0-20, total 0-100)
+  Three engines           A=DeBERTa NLI, B=Emot-RoBERTa, C=Llama 3.1
+  Nine agents             7 per-msg + 1 async + 3 post-session
+
+
+------------------------ RED FLAGS - WHAT NOT TO SAY ------------------------
+
+  X "It's basically ChatGPT with a wrapper"
+    -> No. We have 6 fine-tuned classifiers, an LSTM, RAG, validators,
+       a hybrid evaluation. The LLM is one of many components.
+
+  X "The accuracy is 92%" (without context)
+    -> Be honest. Say which classifier, which test set. If asked about
+       generalisation, cite the Claude Opus 57.8% OOD number.
+
+  X "We use a custom transformer architecture"
+    -> No. We use standard pre-trained models (DistilBERT, DeBERTa-v3,
+       RoBERTa, Whisper) and fine-tune them. The novelty is the COMPOSITION
+       and the data engineering, not the architecture.
+
+  X "Prophet is our forecasting model" (that's friend's inventory module)
+    -> Don't conflate the modules. Roleplay = LSTM + DistilBERT. Inventory
+       = Prophet/EWMA. Different teams, different goals.
+
+
+------------------------ THE ELEVATOR PITCH (60 seconds) --------------------
+
+"SalesForge AI is a sales training platform with three core technical
+contributions. First, a multi-agent roleplay system: 9 specialized agents
+coordinated by an orchestrator, using a 3-engine pipeline (DeBERTa NLI for
+intent, Emotion-RoBERTa for affect, Llama 3.1 for generation). Second, a
+two-stage ML pipeline: 6 fine-tuned DistilBERT classifiers extract per-turn
+features, an LSTM reads the sequence and predicts deal failure risk with
+0.65 AUC-ROC. Third, a hybrid 3-tier evaluation that blends rule-based NLP
+with LLM judgment 60/40 to give honest category scores. All training data
+is multi-source academic (CaSiNo, GoEmotions, ESConv, DeepMost) with
+out-of-distribution validation against Claude Opus labels. Everything runs
+locally via Ollama for privacy."

@@ -17,10 +17,11 @@ class StemGenerator:
     
     def __init__(self):
         self.llm = Ollama(
-            model=settings.LOCAL_LLM_MODEL,
+            model=settings.MCQ_LLM_MODEL,
             base_url=settings.LOCAL_LLM_BASE_URL,
             temperature=0.7,
-            num_ctx=4096
+            num_ctx=4096,
+            num_gpu=getattr(settings, 'LLM_NUM_GPU', 22)
         )
     
     def generate_stems(
@@ -110,7 +111,7 @@ class StemGenerator:
         
         prompt = f"""Generate {num_needed} UNIQUE and DIVERSE multiple-choice questions about {topic}.
 
-**TRAINING MATERIAL:**
+**TRAINING MATERIAL (YOUR ONLY SOURCE OF TRUTH):**
 {context[:1000]}
 
 **TOPIC:** {topic}
@@ -120,29 +121,69 @@ class StemGenerator:
 
 {difficulty_guide}
 
-**CRITICAL DIVERSITY RULES:**
-1. Each question must test a DIFFERENT concept/aspect
+**🚨 STRICT GROUNDING REQUIREMENTS (CRITICAL):**
+1. ALL questions MUST be answerable using ONLY the training material above
+2. DO NOT use external knowledge, pre-training data, or general domain knowledge
+3. DO NOT assume standard practices, industry norms, or common patterns
+4. If information is NOT explicitly stated in the training material, it does NOT exist
+5. DO NOT hallucinate features, terms, processes, or details not in the text
+
+**QUOTATION VERIFICATION (REQUIRED):**
+Before generating each question, you MUST identify the specific text snippet from the training material that contains the answer. Only generate questions where you can quote the exact source.
+
+**NEGATIVE CONSTRAINTS:**
+- ❌ DO NOT use knowledge about Salesforce, AWS, or other platforms
+- ❌ DO NOT assume standard contract terms or legal practices
+- ❌ DO NOT invent product features or capabilities
+- ❌ DO NOT use industry-standard terminology unless explicitly in the text
+- ❌ DO NOT fill gaps with "common sense" or "typical" approaches
+
+**DIVERSITY RULES:**
+1. Each question must test a DIFFERENT concept/aspect from the text
 2. Use DIFFERENT question words (what, how, why, which, when, where)
 3. DO NOT repeat existing questions
 4. DO NOT create variations of the same question
-5. Questions must be 10-20 words
-6. Each question must end with '?'
+5. Questions must be 10-20 words and end with '?'
 
-**Generate {num_needed} DIVERSE questions (JSON format):**
+**SPECIFICITY REQUIREMENTS (CRITICAL):**
+- ❌ AVOID generic questions: "What is X?", "What is the purpose of Y?"
+- ✅ PREFER specific questions: "What percentage...", "Which feature...", "How does X integrate with Y?"
+- ✅ Include numbers, names, specific terms from the text
+- ✅ Ask about relationships, processes, technical details
+- ❌ DO NOT ask about section numbers or document structure
+
+**Generate {num_needed} DIVERSE questions (JSON format).**
+Each question MUST have a cognitive_level matching the difficulty instructions above.
+
 [
-  {{"stem_text": "Different question 1?", "cognitive_level": "remember"}},
-  {{"stem_text": "Different question 2?", "cognitive_level": "understand"}},
-  ...
+  {{"stem_text": "Specific question targeting a different concept?", "cognitive_level": "<level from instructions above>", "key_concept": "<2-3 word concept tested>"}}
 ]
 
 JSON only:"""
 
         try:
-            response = self.llm.invoke(prompt).strip()
-            stems = self._extract_json_from_response(response)
+            # ✅ Add timeout and error handling for Ollama
+            import time
+            max_retries = 2
             
-            if not stems:
-                stems = self._extract_questions_manually(response, topic, difficulty)
+            for retry in range(max_retries):
+                try:
+                    response = self.llm.invoke(prompt).strip()
+                    stems = self._extract_json_from_response(response)
+                    
+                    if not stems:
+                        stems = self._extract_questions_manually(response, topic, difficulty)
+                    
+                    if stems:
+                        break  # Success!
+                    
+                except Exception as e:
+                    if retry < max_retries - 1:
+                        print(f"\n      ⚠️  Retry {retry+1}/{max_retries} after error: {str(e)[:50]}")
+                        time.sleep(2)  # Wait before retry
+                        continue
+                    else:
+                        raise
             
             # Validate and add metadata
             valid_stems = []
@@ -359,27 +400,67 @@ JSON only:"""
             return 'remember'
     
     def _get_difficulty_instructions(self, difficulty: str) -> str:
-        """Get difficulty-specific instructions"""
-        
+        """
+        Get difficulty instructions mapped to Bloom's Taxonomy levels.
+
+        Research: Elkins et al. (2024, arXiv:2408.04394) found LLMs generate
+        higher-quality questions when prompted with explicit Bloom level
+        definitions and examples. Without them, LLMs default to recall-level.
+        """
+
         if difficulty == "easy":
-            return """**EASY QUESTIONS - Focus on:**
-- Basic definitions and facts
-- Simple recall
-- Question starters: "What is...", "What are...", "Define...", "List..."
+            return """**EASY — Bloom's Level: REMEMBER + UNDERSTAND**
+Target: Factual recall and basic comprehension of stated information.
+
+Bloom's REMEMBER = retrieve specific facts, terms, or definitions from the text.
+Bloom's UNDERSTAND = explain or paraphrase what the text says in different words.
+
+Question patterns:
+- "What is the [specific metric/feature] mentioned in the material?" (REMEMBER)
+- "What does [term] refer to according to the text?" (REMEMBER)
+- "Which [category] does [X] belong to?" (UNDERSTAND)
+- "What is the purpose of [feature] as described?" (UNDERSTAND)
+
+IMPORTANT: Every answer must be a DIRECTLY STATED fact from the text.
+Set cognitive_level to "remember" or "understand".
 """
-        
+
         elif difficulty == "medium":
-            return """**MEDIUM QUESTIONS - Focus on:**
-- Concepts and relationships
-- Understanding and application
-- Question starters: "How does...", "Why is...", "What happens when...", "How do you..."
+            return """**MEDIUM — Bloom's Level: APPLY + ANALYZE**
+Target: Using information in new contexts and breaking down relationships.
+
+Bloom's APPLY = use a stated fact/rule to solve a specific scenario.
+Bloom's ANALYZE = identify relationships, compare components, find cause-effect.
+
+Question patterns:
+- "How would [feature] help a company that [specific scenario]?" (APPLY)
+- "If a company has [constraint], which [plan/option] would be most suitable?" (APPLY)
+- "What is the relationship between [X] and [Y] in the system?" (ANALYZE)
+- "Why does [feature] lead to [outcome] according to the material?" (ANALYZE)
+- "How does [metric A] compare to [metric B]?" (ANALYZE)
+
+IMPORTANT: The answer must be derivable from stated facts, but the question
+should require the reader to THINK, not just recall.
+Set cognitive_level to "apply" or "analyze".
 """
-        
+
         else:  # hard
-            return """**HARD QUESTIONS - Focus on:**
-- Analysis and evaluation
-- Critical thinking
-- Question starters: "How would you...", "Compare...", "What factors...", "Evaluate..."
+            return """**HARD — Bloom's Level: EVALUATE + CREATE**
+Target: Making judgments, defending positions, synthesizing across sections.
+
+Bloom's EVALUATE = judge effectiveness, compare trade-offs, assess suitability.
+Bloom's CREATE = combine information from multiple parts of the text to form a conclusion.
+
+Question patterns:
+- "Which limitation would be most critical for [specific use case]?" (EVALUATE)
+- "What trade-off does a company face when choosing [X] over [Y]?" (EVALUATE)
+- "Based on the pricing and features, which plan offers the best value for [scenario]?" (EVALUATE)
+- "Considering both the strengths and limitations, how suitable is [product] for [context]?" (EVALUATE)
+- "What conclusion can be drawn by combining [fact A] with [fact B]?" (CREATE)
+
+IMPORTANT: Questions must require synthesizing multiple facts from the text,
+not just recalling a single data point.
+Set cognitive_level to "evaluate" or "create".
 """
     
     def _extract_json_from_response(self, response: str) -> List[Dict[str, Any]]:

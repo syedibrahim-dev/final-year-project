@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from passlib.context import CryptContext
-from jose import jwt, JWTError  # ✅ ADD JWTError
-from fastapi import HTTPException, Depends, Header  # ✅ ADD Depends, Header
-from fastapi.security import OAuth2PasswordBearer  # ✅ ADD
-from sqlalchemy.orm import Session  # ✅ ADD
+from jose import jwt, JWTError
+from fastapi import HTTPException, Depends, Header
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session
 from config.settings import settings
+from utils.database import get_db
 
 pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 
@@ -39,20 +40,15 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-# ✅ NEW FUNCTION - Add this at the end
 def get_current_user(
     token: str = Depends(oauth2_scheme),
-    db: Session = Depends(lambda: None)  # Will be overridden when called
+    db: Session = Depends(get_db)
 ):
     """
-    Extract and verify current user from JWT token
+    Extract and verify current user from JWT token.
+    Session is managed by FastAPI's dependency injection via get_db.
     """
-    from utils.database import get_db
     from models.user import User
-    
-    # Get database session
-    if db is None:
-        db = next(get_db())
     
     credentials_exception = HTTPException(
         status_code=401,

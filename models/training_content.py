@@ -10,6 +10,8 @@ class TrainingContent(Base):
     id = Column(Integer, primary_key=True, index=True)
     content_id = Column(String(255), unique=True, nullable=False, index=True)
     file_name = Column(String(255), nullable=False)
+    source_type = Column(String(20), default="document")  # "document", "url", "media"
+    source_url = Column(String(500), nullable=True)  # URL for scraped content
     version = Column(String(50), default="1.0")
     page_count = Column(Integer, default=0)
     chunk_count = Column(Integer, default=0)

@@ -10,6 +10,7 @@ import random
 from mcq.stem_generator import StemGenerator
 from mcq.distractor_generator import DistractorGenerator
 from mcq.distractor_filter import DistractorFilter
+from mcq.validator import MCQValidator
 from services.rag_service import retrieve_relevant_chunks
 
 
@@ -20,6 +21,10 @@ class MCQPipeline:
         self.stem_generator = StemGenerator()
         self.distractor_generator = DistractorGenerator()
         self.distractor_filter = DistractorFilter(min_plausibility=0.4)
+        self.validator = MCQValidator(
+            relevance_threshold=0.3,  # 30% minimum relevance
+            clarity_threshold=0.7     # 70% minimum clarity
+        )
     
     def generate_mcqs(
         self,
@@ -53,15 +58,19 @@ class MCQPipeline:
         context_chunks = retrieve_relevant_chunks(
             query=topic,
             org_id=org_id,
-            k=3
+            k=3  # Safe value for llama3.1:8b
         )
         
         if not context_chunks:
             raise ValueError("No training content found for this topic. Please upload training materials first.")
         
-        # Limit context to 1500 chars for faster processing
-        context = "\n\n".join([chunk["chunk"] for chunk in context_chunks])[:1500]
+        # Increased context for richer question generation
+        context = "\n\n".join([chunk["chunk"] for chunk in context_chunks])[:3000]
         print(f"   ✅ Retrieved {len(context_chunks)} context chunks ({len(context)} chars)")
+        
+        # ✅ Validate context has substantial content
+        if len(context.strip()) < 200:
+            raise ValueError(f"Retrieved context too short ({len(context)} chars). Need more detailed training material.")
         
         # STEP 2: Generate question stems
         print(f"\n❓ Step 2: Generating question stems...")
@@ -110,7 +119,43 @@ class MCQPipeline:
         if not complete_questions:
             raise ValueError("Failed to generate any valid questions. Please try again.")
         
-        final_questions = complete_questions[:num_questions]
+        # STEP 4: Validate questions (new step)
+        print(f"\n✅ Step 4: Validating question quality...")
+        print(f"   ℹ️  Running 3 validation types: Relevance, Correctness, Clarity")
+        
+        validated_questions = []
+        
+        for i, question in enumerate(complete_questions):
+            print(f"   🔍 Validating Q{i+1}...", end=" ", flush=True)
+            
+            try:
+                validation_result = self.validator.validate_complete(
+                    question=question,
+                    context=context
+                )
+                
+                # Add validation results to question metadata
+                question['validation'] = validation_result
+                
+                if validation_result['overall_passed']:
+                    validated_questions.append(question)
+                    print("✅ PASS")
+                else:
+                    print(f"⚠️  FAIL - {validation_result['summary']}")
+                    # Still include the question but mark it as low quality
+                    question['quality_warning'] = True
+                    validated_questions.append(question)
+            
+            except Exception as e:
+                print(f"⚠️  Validation error: {str(e)[:40]}")
+                # Include question even if validation fails
+                question['validation'] = {'error': str(e)}
+                validated_questions.append(question)
+        
+        if not validated_questions:
+            raise ValueError("Failed to generate any valid questions. Please try again.")
+        
+        final_questions = validated_questions[:num_questions]
         
         print(f"\n✅ Pipeline complete! Generated {len(final_questions)} questions")
         
@@ -137,11 +182,12 @@ class MCQPipeline:
         correct_answer = self._generate_correct_answer(stem_text, context)
         
         # Generate distractors (they will NOT repeat correct answer)
-        raw_distractors = self.distractor_generator.generate_distractors_simple(
+        raw_distractors = self.distractor_generator.generate_distractors(
             stem=stem_text,
             correct_answer=correct_answer,
             context=context,
-            num_distractors=3
+            num_distractors=3,
+            difficulty=difficulty
         )
         
         # Filter distractors (removes duplicates and low quality)
@@ -178,11 +224,15 @@ class MCQPipeline:
         # Determine correct answer letter
         correct_letter = self._find_correct_letter(options)
         
+        # Build per-option misconception explanations
+        option_explanations = self._build_misconception_explanations(options)
+
         return {
             "question_text": stem_text,
             "options": options,
             "correct_answer": correct_letter,
             "explanation": explanation,
+            "option_explanations": option_explanations,
             "difficulty": difficulty,
             "topic": stem.get('topic', topic),
             "cognitive_level": stem.get('cognitive_level', 'understand'),
@@ -196,46 +246,96 @@ class MCQPipeline:
         from config.settings import settings
         
         llm = Ollama(
-            model=settings.LOCAL_LLM_MODEL,
+            model=settings.MCQ_LLM_MODEL,
             base_url=settings.LOCAL_LLM_BASE_URL,
             temperature=0.3,
-            num_ctx=2048
+            num_ctx=4096,
+            num_gpu=getattr(settings, 'LLM_NUM_GPU', 22)
         )
         
-        prompt = f"""Based on the training material below, provide a SHORT and CONCISE answer to the question.
+        prompt = f"""Based STRICTLY on the training material below, provide a SHORT and CONCISE answer.
 
-IMPORTANT RULES:
-- Maximum 15 words
-- Be specific and factual
-- Use simple language
-- Answer directly
+**TRAINING MATERIAL (YOUR ONLY SOURCE):**
+{context[:1000]}
 
-Training Material:
-{context[:800]}
+**QUESTION:**
+{stem}
 
-Question: {stem}
+**🚨 STRICT GROUNDING REQUIREMENTS:**
+1. Answer MUST come from the training material above - NOT from your general knowledge
+2. If the answer is NOT explicitly in the text, respond with: "SKIP_QUESTION"
+3. DO NOT use external knowledge about products, services, or standard practices
+4. DO NOT assume or infer information not directly stated
+5. Quote the exact phrase or number from the training material
 
-Provide ONLY the answer (maximum 15 words):"""
+**NEGATIVE CONSTRAINTS:**
+- ❌ NO Salesforce/AWS/platform-specific knowledge unless in text
+- ❌ NO standard business practices unless explicitly stated
+- ❌ NO industry terminology unless used in the training material
+- ❌ NO invented features, processes, or terms
+- ❌ NO assumptions based on "typical" or "common" approaches
+
+**ANSWER REQUIREMENTS:**
+- Maximum 30 words (increased to prevent truncation)
+- Must be factual and directly from text
+- Use exact terminology from training material
+- Include specific numbers, names, or technical terms
+- Must be a COMPLETE sentence or phrase (no truncation)
+- ❌ AVOID generic answers like "based on training material" or "to manage risks"
+- ❌ AVOID vague answers like "no further details provided"
+- ✅ PREFER specific answers like "Net 30 payment terms" or "85% uptime SLA"
+
+**EXAMPLES:**
+Question: "What are the payment terms?"
+❌ BAD: "Payment terms from the contract"
+✅ GOOD: "Net 30 days from invoice date"
+
+Question: "What is the purpose of Risk Management?"
+❌ BAD: "To manage risks"
+✅ GOOD: "Identify, assess, and mitigate project delivery risks"
+
+Provide ONLY the specific answer (maximum 20 words):"""
         
         try:
             answer = llm.invoke(prompt).strip()
+            
+            # ✅ REJECT only critical failure indicators (reduced for phi3:mini)
+            failure_indicators = [
+                "skip_question",                # LLM signaling unanswerable
+                "cannot answer",
+                "cannot find",
+                "not found",
+                "not mentioned",
+                "no further details",           # Vague answer
+                "based on training material",  # Generic fallback without specifics
+                "cannot be determined"          # Explicitly saying it's unanswerable
+            ]
+            
+            answer_lower = answer.lower()
+            for indicator in failure_indicators:
+                if indicator in answer_lower:
+                    raise ValueError(f"Question unanswerable or generic answer: {stem}")
+            
+            # ✅ REJECT if answer is too short (likely generic)
+            if len(answer.strip()) < 5:
+                raise ValueError(f"Answer too short/generic: {answer}")
             
             # Clean up the answer
             answer = answer.replace('\n', ' ').strip()
             answer = answer.strip('"\'')
             
-            # Truncate if too long
-            if len(answer) > 120:
+            # Truncate if too long (increased limit)
+            if len(answer) > 180:
                 sentences = answer.split('.')
                 answer = sentences[0].strip()
-                if len(answer) > 120:
-                    answer = answer[:117] + "..."
+                if len(answer) > 180:
+                    answer = answer[:177] + "..."
             
             return answer
             
         except Exception as e:
-            print(f"\n      ⚠️  Answer generation failed: {e}")
-            return "Correct answer based on training material"
+            # ✅ DON'T return generic fallback - raise exception to skip this question
+            raise ValueError(f"Answer generation failed: {str(e)[:100]}")
     
     def _build_options_formatted(
         self,
@@ -253,8 +353,8 @@ Provide ONLY the answer (maximum 15 words):"""
         
         # Add correct answer
         correct_text = correct_answer.strip()
-        if len(correct_text) > 120:
-            correct_text = correct_text[:117] + "..."
+        if len(correct_text) > 180:  # ✅ Increased to match new 30-word limit
+            correct_text = correct_text[:177] + "..."
         
         correct_text = correct_text.strip('"\'')
         options.append({
@@ -280,18 +380,24 @@ Provide ONLY the answer (maximum 15 words):"""
                 print(f"\n      🔄 Skipped duplicate distractor")
                 continue
             
-            # Truncate if too long
-            if len(distractor_text) > 120:
-                distractor_text = distractor_text[:117] + "..."
+            # Truncate if too long (increased limit)
+            if len(distractor_text) > 180:
+                distractor_text = distractor_text[:177] + "..."
             
             distractor_text = distractor_text.strip('"\'')
             
             # ✅ Double-check not a duplicate
             if distractor_text.lower() not in used_texts:
-                options.append({
+                opt = {
                     "option_text": distractor_text,
-                    "is_correct": False
-                })
+                    "is_correct": False,
+                }
+                # Carry misconception metadata if available
+                if dist.get("why_wrong"):
+                    opt["why_wrong"] = dist["why_wrong"]
+                if dist.get("misconception_type"):
+                    opt["misconception_type"] = dist["misconception_type"]
+                options.append(opt)
                 used_texts.add(distractor_text.lower())
                 added_distractors += 1
         
@@ -324,27 +430,57 @@ Provide ONLY the answer (maximum 15 words):"""
         index: int
     ) -> str:
         """
-        ✅ NEW: Generate emergency contextual distractor
-        Used when we absolutely need more options
+        Generate emergency distractor by mutating the correct answer
+        to produce a plausible but incorrect variant.
         """
+        import re as _re
         
-        templates = [
-            f"Related to {topic} but not applicable here",
-            f"Common misconception in {topic}",
-            f"Partial understanding of {topic}",
-            f"Applies to different {topic} scenario",
-            f"Outdated {topic} approach",
-            f"Incomplete {topic} explanation",
-            f"Confusion with related concept",
-            "Not the primary purpose"
-        ]
+        # Strategy 1: Negate or modify the correct answer
+        mutations = []
+        ca = correct_answer.strip()
         
-        for template in templates:
-            if template.lower() not in [t.lower() for t in existing_texts]:
-                return template
+        # Numeric mutation: change numbers in the answer
+        nums = _re.findall(r'\d+', ca)
+        if nums:
+            for n in nums[:1]:
+                alt_n = str(int(n) * 2) if int(n) < 50 else str(int(n) // 2)
+                mutations.append(ca.replace(n, alt_n, 1))
         
-        # Last resort
-        return f"Alternative but incorrect interpretation"
+        # Word-level mutations
+        word_swaps = {
+            'increase': 'decrease', 'decrease': 'increase',
+            'before': 'after', 'after': 'before',
+            'internal': 'external', 'external': 'internal',
+            'first': 'last', 'last': 'first',
+            'primary': 'secondary', 'secondary': 'primary',
+            'all': 'some', 'always': 'sometimes',
+            'required': 'optional', 'optional': 'required',
+            'maximum': 'minimum', 'minimum': 'maximum',
+        }
+        ca_lower = ca.lower()
+        for old, new in word_swaps.items():
+            if old in ca_lower:
+                idx = ca_lower.find(old)
+                mutations.append(ca[:idx] + new + ca[idx + len(old):])
+                break
+        
+        # Truncation: use only the first half of the answer
+        words = ca.split()
+        if len(words) > 4:
+            mutations.append(' '.join(words[:len(words)//2]))
+        
+        # Topic-based fallbacks as last resort
+        mutations.extend([
+            f"A different aspect of {topic}",
+            f"Not directly related to this {topic} requirement",
+        ])
+        
+        existing_lower = {t.lower() for t in existing_texts}
+        for m in mutations:
+            if m.strip().lower() not in existing_lower and m.strip().lower() != ca.lower():
+                return m.strip()
+        
+        return f"Alternative interpretation in {topic}"
     
     def _find_correct_letter(self, options: List[Dict[str, str]]) -> str:
         """Find which letter (A, B, C, D) is the correct answer"""
@@ -363,11 +499,42 @@ Provide ONLY the answer (maximum 15 words):"""
         correct_answer: str,
         topic: str
     ) -> str:
-        """Generate a simple explanation"""
-        
-        answer_preview = correct_answer[:80] + "..." if len(correct_answer) > 80 else correct_answer
-        
-        return f"The correct answer is based on the training material covering {topic}. {answer_preview}"
+        """Generate a simple explanation with proper context"""
+
+        answer_preview = correct_answer[:150] + "..." if len(correct_answer) > 150 else correct_answer
+
+        if answer_preview.lower().startswith("according to"):
+            return answer_preview.capitalize()
+        else:
+            return f"According to the training material, {answer_preview}"
+
+    def _build_misconception_explanations(self, options: list) -> list:
+        """
+        Build per-option explanations showing which misconception each wrong
+        answer targets. Shown to the trainee after they answer.
+
+        Research: arXiv:2506.00612 (Knowledge-Guided Distractor Generation, 2025)
+        showed that explaining the specific misconception behind each wrong answer
+        significantly improves learning outcomes.
+        """
+        explanations = []
+        letters = ["A", "B", "C", "D"]
+        for i, opt in enumerate(options):
+            letter = letters[i] if i < len(letters) else "?"
+            if opt.get("is_correct"):
+                explanations.append({
+                    "option": letter,
+                    "correct": True,
+                    "explanation": "This is the correct answer based on the training material.",
+                })
+            elif opt.get("why_wrong"):
+                explanations.append({
+                    "option": letter,
+                    "correct": False,
+                    "misconception_type": opt.get("misconception_type", "unknown"),
+                    "explanation": opt["why_wrong"],
+                })
+        return explanations
     
     def validate_questions(self, questions: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Validate generated questions for quality"""
@@ -423,8 +590,8 @@ Provide ONLY the answer (maximum 15 words):"""
         
         # Check option text lengths
         for i, opt in enumerate(options):
-            if len(opt.get('option_text', '')) > 150:
-                issues.append(f"Option {i+1} is too long (>150 chars)")
+            if len(opt.get('option_text', '')) > 200:  # ✅ Increased to match new limit
+                issues.append(f"Option {i+1} is too long (>200 chars)")
         
         # Check question text length
         if len(question.get('question_text', '')) < 10:
