@@ -87,6 +87,13 @@ try:
 except ImportError as e:
     print(f"❌ Failed to import mcq routes: {e}")
     traceback.print_exc()
+try:
+    from routes import chatbot
+    routes_to_import.append(("chatbot", chatbot))
+    print("✅ Chatbot routes imported")
+except ImportError as e:
+    print(f"❌ Failed to import chatbot routes: {e}")
+    traceback.print_exc()
 
 # Roleplay routes
 try:
