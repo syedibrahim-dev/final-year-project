@@ -5,7 +5,9 @@ import {
     BarChart2, FileText, FolderOpen, Search, LogOut, Sparkles, Zap,
     MessageSquare, MessageCircle, ChevronRight, Shield, Rocket, BookOpen, Target, Lightbulb,
     // Module 5: Automation icons (added by friend's branch)
-    Activity, Users, TrendingUp, Package, Box
+    Activity, Users, TrendingUp, Package, Box,
+    // Integrations + Customer Analytics
+    Plug, UserCheck
 } from 'lucide-react';
 import { apiFetch, auth as authApi } from './utils/api';
 
@@ -28,10 +30,16 @@ import RoleplayChat from './pages/RoleplayChat';
 import RoleplayFeedback from './pages/RoleplayFeedback';
 
 // Module 5: Automation (from friend's branch)
-import MarketingPostCreator from './pages/MarketingPostCreator';
+// MarketingPostCreator import removed — module hidden from UI but file retained.
+// Re-enable: uncomment next line + the nav entry + the switch case in DashboardView.
+// import MarketingPostCreator from './pages/MarketingPostCreator';
 import InventoryManagerView from './pages/InventoryManager';
 import TransactionAnalytics from './pages/TransactionAnalytics';
 import LeadManager from './pages/LeadManager';
+
+// Integrations + Customer Analytics
+import IntegrationsPage from './pages/IntegrationsPage';
+import CustomerAnalyticsPage from './pages/CustomerAnalyticsPage';
 
 // ===== Shared UI Components =====
 export const Card = ({ title, icon, children, onClick, className = '' }) => (
@@ -395,12 +403,21 @@ const DashboardView = ({ token, user, logout }) => {
 
             {(['admin', 'manager'].includes(user.role)) && (
                 <>
+                    {/* Marketing Posts UI removed — module incomplete. Re-enable by
+                        uncommenting the NavSection below + corresponding switch case +
+                        import. MarketingPostCreator.jsx itself is intact. */}
+                    {/*
                     <NavSection label="Marketing" />
                     <NavItem onClick={() => setView('marketing-posts')} active={view === 'marketing-posts'} icon={<Sparkles />} label="Marketing Posts" index={10} />
+                    */}
 
                     <NavSection label="Inventory" />
                     <NavItem onClick={() => setView('inventory')} active={view === 'inventory'} icon={<Package />} label="Inventory Forecasts" index={11} />
                     <NavItem onClick={() => setView('analytics')} active={view === 'analytics'} icon={<Activity />} label="Transaction Analytics" index={12} />
+
+                    <NavSection label="Customer Intelligence" />
+                    <NavItem onClick={() => setView('integrations')} active={view === 'integrations'} icon={<Plug />} label="Store Integrations" index={14} />
+                    <NavItem onClick={() => setView('customer-analytics')} active={view === 'customer-analytics'} icon={<UserCheck />} label="Customer Analytics" index={15} />
 
                     <NavSection label="Lead Management" />
                     <NavItem onClick={() => setView('lead-scoring')} active={view === 'lead-scoring'} icon={<TrendingUp />} label="Lead Scoring" index={13} />
@@ -484,12 +501,17 @@ const DashboardView = ({ token, user, logout }) => {
                 return <PerformanceDashboard key={`perf-${Date.now()}`} orgId={user.organization_id} token={token} userId={user.id} />;
             case 'knowledge-chat':
                 return <KnowledgeChatbot orgId={user.organization_id} token={token} />;
-            case 'marketing-posts':
-                return <MarketingPostCreator token={token} genState={marketingGenState} setGenState={setMarketingGenState} />;
+            // Marketing Posts UI removed — module incomplete. Re-enable by uncommenting.
+            // case 'marketing-posts':
+            //     return <MarketingPostCreator token={token} genState={marketingGenState} setGenState={setMarketingGenState} />;
             case 'inventory':
                 return <InventoryManagerView orgId={user.organization_id} token={token} />;
             case 'analytics':
                 return <TransactionAnalytics token={token} />;
+            case 'integrations':
+                return <IntegrationsPage token={token} />;
+            case 'customer-analytics':
+                return <CustomerAnalyticsPage token={token} />;
             case 'lead-scoring':
                 return <LeadManager token={token} />;
             default:

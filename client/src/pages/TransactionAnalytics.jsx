@@ -1,23 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { 
-    TrendingUp, Activity, DollarSign, ShoppingCart, 
-    AlertTriangle, Package, Calendar, RefreshCw
+import {
+    TrendingUp, Activity, DollarSign, ShoppingCart,
+    AlertTriangle, Package, Calendar, RefreshCw, Store as StoreIcon, Loader2
 } from 'lucide-react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, AreaChart, Area
 } from 'recharts';
-import { storeAnalytics } from '../utils/api';
+import { storeAnalytics, customerAnalytics } from '../utils/api';
 
 const TransactionAnalytics = ({ token }) => {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
 
-    const fetchData = async () => {
+    // Store selector state
+    const [stores, setStores] = useState([]);
+    const [selectedStoreId, setSelectedStoreId] = useState(null);  // null = org-wide aggregate
+    const [storesLoading, setStoresLoading] = useState(true);
+
+    const fetchData = async (storeId = selectedStoreId) => {
         setLoading(true);
         setError(null);
         try {
-            const result = await storeAnalytics.getDashboard(token);
+            const result = await storeAnalytics.getDashboard(token, storeId);
             setData(result);
         } catch (err) {
             setError(err.message || "Failed to load analytics data");
@@ -26,11 +31,38 @@ const TransactionAnalytics = ({ token }) => {
         }
     };
 
+    // Fetch list of stores once on mount
     useEffect(() => {
-        if (token) {
-            fetchData();
-        }
+        if (!token) return;
+        (async () => {
+            setStoresLoading(true);
+            try {
+                const res = await customerAnalytics.listStores(token);
+                const list = res.stores || [];
+                setStores(list);
+                // Default: biggest store by transaction count (so OR-II pops up first)
+                if (list.length > 0) {
+                    const biggest = list.reduce((a, b) =>
+                        (b.transaction_count > a.transaction_count ? b : a)
+                    );
+                    setSelectedStoreId(biggest.id);
+                }
+            } catch (err) {
+                console.error('Failed to load stores:', err);
+            } finally {
+                setStoresLoading(false);
+            }
+        })();
     }, [token]);
+
+    // Re-fetch dashboard whenever the selected store changes
+    useEffect(() => {
+        if (token && !storesLoading) {
+            fetchData(selectedStoreId);
+        }
+    }, [token, selectedStoreId, storesLoading]);
+
+    const selectedStore = stores.find((s) => s.id === selectedStoreId);
 
     const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 
@@ -86,24 +118,86 @@ const TransactionAnalytics = ({ token }) => {
 
     if (!data) return null;
 
+    const asOfLabel = data.as_of_date
+        ? new Date(data.as_of_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+        : null;
+    const asOfIsStale = data.as_of_date
+        ? (Date.now() - new Date(data.as_of_date).getTime()) > (90 * 24 * 60 * 60 * 1000)
+        : false;
+
     return (
         <div className="max-w-6xl mx-auto space-y-6">
-            <div className="flex justify-between items-center mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div>
-                    <h2 className="text-3xl font-black bg-gradient-to-r from-blue-700 to-indigo-600 bg-clip-text text-transparent mb-1 flex items-center">
-                        <Activity className="mr-3 text-blue-600" size={28} />
-                        Transaction Analytics
-                    </h2>
-                    <p className="text-slate-500 font-medium ml-10">Monitor store performance, trends, and anomalies</p>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div>
+                        <h2 className="text-3xl font-black bg-gradient-to-r from-blue-700 to-indigo-600 bg-clip-text text-transparent mb-1 flex items-center">
+                            <Activity className="mr-3 text-blue-600" size={28} />
+                            Transaction Analytics
+                        </h2>
+                        <p className="text-slate-500 font-medium ml-10">Monitor store performance, trends, and anomalies</p>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                        {stores.length > 0 && (
+                            <div className="flex items-center space-x-2">
+                                <StoreIcon size={16} className="text-slate-500" />
+                                <select
+                                    value={selectedStoreId || ''}
+                                    onChange={(e) => setSelectedStoreId(e.target.value ? parseInt(e.target.value) : null)}
+                                    className="px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-medium text-slate-700 text-sm"
+                                >
+                                    <option value="">All stores (aggregated)</option>
+                                    {stores.map((s) => (
+                                        <option key={s.id} value={s.id}>
+                                            {s.name} ({s.transaction_count.toLocaleString()} txns)
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                        <button
+                            onClick={() => fetchData(selectedStoreId)}
+                            className="flex items-center space-x-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition"
+                        >
+                            <RefreshCw size={18} />
+                            <span>Refresh</span>
+                        </button>
+                    </div>
                 </div>
-                <button 
-                    onClick={fetchData}
-                    className="flex items-center space-x-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition"
-                >
-                    <RefreshCw size={18} />
-                    <span>Refresh</span>
-                </button>
+
+                {selectedStore && (
+                    <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                        <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold">
+                            {selectedStore.product_count.toLocaleString()} products
+                        </span>
+                        <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full font-bold">
+                            {selectedStore.customer_count.toLocaleString()} customers
+                        </span>
+                        <span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full font-bold">
+                            {selectedStore.transaction_count.toLocaleString()} transactions
+                        </span>
+                        {selectedStore.platform && (
+                            <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full font-bold font-mono">
+                                {selectedStore.platform}
+                            </span>
+                        )}
+                    </div>
+                )}
             </div>
+
+            {asOfLabel && (
+                <div className={`p-3 rounded-xl border flex items-center space-x-3 text-sm ${
+                    asOfIsStale
+                        ? 'bg-amber-50 border-amber-200 text-amber-800'
+                        : 'bg-blue-50 border-blue-100 text-blue-800'
+                }`}>
+                    <Calendar size={16} className={asOfIsStale ? 'text-amber-600' : 'text-blue-600'} />
+                    <span>
+                        Window anchored to <b>{asOfLabel}</b> (latest transaction in your data).
+                        {asOfIsStale && ' Your data is historical — numbers reflect the 30-day window ending at that date.'}
+                    </span>
+                </div>
+            )}
 
             {/* KPIs */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

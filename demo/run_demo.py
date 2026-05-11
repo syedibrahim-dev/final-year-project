@@ -852,6 +852,28 @@ def _run_demo_core(org_id=None, pause=False, run_deepmost=True, quick=False, log
             )
 
             if eval_data:
+                # ── Evaluator badge (shows which path ran) ──
+                evaluator_used = eval_data.get("_evaluator_used", "performance")
+                agentic_meta = eval_data.get("_agentic_meta", {})
+                if evaluator_used == "agentic":
+                    iter_used = agentic_meta.get("iterations_used", "?")
+                    tools_called = agentic_meta.get("tools_called", [])
+                    tool_count = agentic_meta.get("tool_call_count", len(tools_called))
+                    print(f"  {BG_GREEN}{BOLD} EVALUATOR: AGENTIC {RESET}  "
+                          f"{DIM}tool-use loop, {iter_used} iterations, "
+                          f"{tool_count} tool calls{RESET}")
+                    if tools_called:
+                        # Count tool usage frequency
+                        from collections import Counter
+                        tool_freq = Counter(tools_called)
+                        print(f"  {DIM}Tools invoked: " +
+                              ", ".join(f"{name}×{count}" for name, count in tool_freq.most_common()) +
+                              f"{RESET}")
+                else:
+                    print(f"  {BG_BLUE}{BOLD} EVALUATOR: CLASSIC (PerformanceAgent) {RESET}  "
+                          f"{DIM}single-prompt LLM call{RESET}")
+                print()
+
                 # Summary
                 summary = eval_data.get("summary")
                 if summary:
@@ -909,6 +931,75 @@ def _run_demo_core(org_id=None, pause=False, run_deepmost=True, quick=False, log
                         print(f"    {BOLD}{label}:{RESET} {fb}")
                     print()
 
+                # ── Fact Check Report (only present when agentic fact-checker ran) ──
+                fc_report = eval_data.get("fact_check_report")
+                if fc_report:
+                    banner("AGENTIC FACT-CHECK REPORT", BG_YELLOW)
+
+                    claims_analysed = fc_report.get("claims_analyzed", 0)
+                    fc_summary = fc_report.get("summary", "")
+                    fc_meta = fc_report.get("_agentic_meta", {})
+
+                    # Short-circuit case (no docs)
+                    if fc_meta.get("short_circuited"):
+                        print(f"  {DIM}Short-circuited: {fc_meta.get('reason', 'unknown')}{RESET}")
+                        print(f"  {fc_summary}\n")
+                    else:
+                        # Stats header
+                        verified = fc_report.get("verified", 0)
+                        exaggerated = fc_report.get("exaggerated", 0)
+                        understated = fc_report.get("understated", 0)
+                        unverified = fc_report.get("unverified", 0)
+                        contradicted = fc_report.get("contradicted", 0)
+
+                        iter_used = fc_meta.get("iterations_used", "?")
+                        tool_count = fc_meta.get("tool_call_count", 0)
+                        print(f"  {DIM}({iter_used} iterations, {tool_count} tool calls){RESET}")
+                        print()
+
+                        print(f"  {BOLD}Claims analysed: {claims_analysed}{RESET}")
+                        print(f"    {GREEN}✓ Verified:     {verified}{RESET}")
+                        if exaggerated:
+                            print(f"    {YELLOW}⚠ Exaggerated:  {exaggerated}{RESET}")
+                        if understated:
+                            print(f"    {YELLOW}↓ Understated:  {understated}{RESET}")
+                        if unverified:
+                            print(f"    {DIM}? Unverified:   {unverified}{RESET}")
+                        if contradicted:
+                            print(f"    {RED}✗ Contradicted: {contradicted}{RESET}")
+                        print()
+
+                        if fc_summary:
+                            print(f"  {BOLD}Assessment:{RESET} {fc_summary}")
+                            print()
+
+                        # Show flagged (non-verified) claims — the interesting ones
+                        details = fc_report.get("details", [])
+                        flagged = [d for d in details if d.get("verdict") != "verified"]
+                        if flagged:
+                            print(f"  {BOLD}Flagged claims ({len(flagged)}):{RESET}")
+                            for d in flagged[:5]:  # cap to 5 for readability
+                                verdict = d.get("verdict", "unverified")
+                                v_color = (
+                                    YELLOW if verdict in ("exaggerated", "understated") else
+                                    RED if verdict == "contradicted" else
+                                    DIM  # unverified
+                                )
+                                conf = d.get("confidence", 0)
+                                turn_idx = d.get("turn_index", "?")
+                                claim_txt = d.get("claim", "")[:120]
+                                evidence = d.get("evidence", "")[:120]
+                                reasoning = d.get("reasoning", "")[:200]
+
+                                print(f"\n    {v_color}[{verdict.upper()}]{RESET} "
+                                      f"{DIM}(turn {turn_idx}, confidence {conf:.0%}){RESET}")
+                                print(f'      Claim:     "{claim_txt}"')
+                                print(f'      Evidence:  "{evidence}"')
+                                print(f'      Reasoning: {reasoning}')
+                            print()
+                        else:
+                            print(f"  {GREEN}All claims verified — no flags raised.{RESET}\n")
+
         except Exception as e:
             print(f"  {RED}Evaluation error: {e}{RESET}")
             import traceback
@@ -942,6 +1033,18 @@ def _run_demo_core(org_id=None, pause=False, run_deepmost=True, quick=False, log
     print(f"  - SalesRLAgent (arXiv:2503.23303) — conversion prediction")
     print()
 
+    # Agentic mode usage hint
+    try:
+        from config.settings import settings as _s
+        if getattr(_s, "ENABLE_AGENTIC_EVALUATOR", False) or getattr(_s, "ENABLE_AGENTIC_FACT_CHECK", False):
+            print(f"  {MAGENTA}{BOLD}Agentic layer demo'd in this run.{RESET}")
+            print(f"  {DIM}Re-run without --agentic to compare against the classic PerformanceAgent path.{RESET}")
+        else:
+            print(f"  {DIM}Tip: re-run with --agentic to showcase the tool-use evaluator + fact-checker.{RESET}")
+        print()
+    except Exception:
+        pass
+
     # ── Log file notice (viva backup) ──
     if log_path is not None:
         print(f"  {DIM}Full output also captured to:{RESET}")
@@ -968,9 +1071,30 @@ def main():
                         help="Quick mode: skip guardrail pre-test and post-session evaluation")
     parser.add_argument("--no-log", action="store_true",
                         help="Don't tee output to demo/demo_output_latest.txt")
+    parser.add_argument("--agentic", action="store_true",
+                        help="Enable both agentic evaluator + agentic fact-checker for this run. "
+                             "Switches the post-session evaluation from the single-prompt PerformanceAgent "
+                             "to the tool-use loop + appends a fact_check_report if RAG docs are available.")
     args = parser.parse_args()
 
     org_id = args.org_id
+
+    # ── Optional agentic toggles ──
+    # Mutate the live settings object so the orchestrator picks up the new
+    # flags BEFORE process_evaluation is called. Orchestrator lazy-reads
+    # via getattr, so this takes effect immediately for this run.
+    if args.agentic:
+        try:
+            from config.settings import settings as _settings
+            _settings.ENABLE_AGENTIC_EVALUATOR = True
+            _settings.ENABLE_AGENTIC_FACT_CHECK = True
+            # Also set env vars in case any subprocess re-reads them
+            os.environ["ENABLE_AGENTIC_EVALUATOR"] = "true"
+            os.environ["ENABLE_AGENTIC_FACT_CHECK"] = "true"
+            print(f"{MAGENTA}{BOLD}[AGENTIC MODE]{RESET} "
+                  f"{MAGENTA}evaluator + fact_checker ENABLED for this run{RESET}\n")
+        except Exception as e:
+            print(f"{YELLOW}Warning: could not enable agentic mode: {e}{RESET}")
 
     if args.ingest:
         if not org_id:

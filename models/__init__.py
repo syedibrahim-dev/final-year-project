@@ -16,10 +16,12 @@ from models.roleplay import (
 from models.inventory import (
     Store,
     Product,
+    Customer,
     SalesTransaction,
     InventoryForecast,
     StockAlert,
 )
+from models.store_integration import StoreIntegration
 
 __all__ = [
     "Base",
@@ -35,7 +37,9 @@ __all__ = [
     "RoleplayEvaluation",
     "Store",
     "Product",
+    "Customer",
     "SalesTransaction",
     "InventoryForecast",
     "StockAlert",
+    "StoreIntegration",
 ]
