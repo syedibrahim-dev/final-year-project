@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { FileText, Loader2, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import { mcq as mcqApi } from '../utils/api';
-import { Button } from '../App';
+import { useAuth } from '../context/AuthContext';
+import { Button, PageHeader, RelatedLinks } from '../components/ui';
 
-export default function MCQTestCreator({ orgId, token }) {
+export default function MCQTestCreator() {
+    const { token, user } = useAuth();
+    const orgId = user?.organization_id;
     const [formData, setFormData] = useState({
         topic: '',
         difficulty: 'medium',
@@ -107,20 +110,12 @@ export default function MCQTestCreator({ orgId, token }) {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-cyan-50 via-blue-50 to-indigo-50 p-6 rounded-3xl border-2 border-cyan-100">
-                <h3 className="text-3xl font-black text-slate-800 flex items-center space-x-3">
-                    <div className="p-3 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-2xl shadow-lg">
-                        <FileText size={28} />
-                    </div>
-                    <span className="bg-gradient-to-r from-cyan-600 to-blue-700 bg-clip-text text-transparent">
-                        Create MCQ Test
-                    </span>
-                </h3>
-                <p className="text-slate-600 font-medium ml-16 mt-2">
-                    Generate AI-powered MCQs from your training content
-                </p>
-            </div>
+            <PageHeader
+                title="Create MCQ Test"
+                subtitle="Generate AI-powered questions from your training content and publish tests for your team"
+                backTo="/dashboard"
+                backLabel="Dashboard"
+            />
 
             {/* Info Box */}
             <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-200 rounded-2xl p-5">
@@ -381,6 +376,10 @@ export default function MCQTestCreator({ orgId, token }) {
                     </div>
                 </div>
             )}
+            <RelatedLinks links={[
+                { label: 'MCQ Practice',          to: '/mcq' },
+                { label: 'Performance Dashboard', to: '/performance' },
+            ]} />
         </div>
     );
 }

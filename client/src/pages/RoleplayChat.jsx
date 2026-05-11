@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Loader2, Send, X, User, Bot, Clock, Lightbulb, TrendingUp, TrendingDown, ChevronRight, Heart, AlertTriangle, Shield, CheckCircle, Mic, MicOff, VolumeX, MessageCircle, Activity } from 'lucide-react';
 import * as d3 from 'd3';
 import { apiFetch } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 const AnimatedAvatar3D = React.lazy(() => import('../components/AnimatedAvatar3D'));
 
 // ── Stage definitions ──
@@ -389,7 +391,23 @@ function ConversionTrendChart({ history }) {
 }
 
 // ── Main Chat Component ──
-export default function RoleplayChat({ sessionId, token, onEnd, mode = 'text' }) {
+export default function RoleplayChat({ sessionId: sessionIdProp, token: tokenProp, onEnd, mode: modeProp = 'text' }) {
+    // Support both legacy prop-based usage AND React Router URL params
+    const params = useParams();
+    const location = useLocation();
+    const navigate = useNavigate();
+    const { token: ctxToken } = useAuth();
+
+    const sessionId = sessionIdProp || params.sessionId;
+    const token = tokenProp || ctxToken;
+    const mode = modeProp !== 'text' ? modeProp : (location.state?.mode || 'text');
+
+    // Router-aware onEnd: if no callback prop, navigate to feedback page
+    const handleEnd = onEnd || ((nlpData, sid, convHistory) => {
+        navigate(`/roleplay/feedback/${sid || sessionId}`, {
+            state: { nlpData, convHistory },
+        });
+    });
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
@@ -484,7 +502,7 @@ export default function RoleplayChat({ sessionId, token, onEnd, mode = 'text' })
     const endSession = async () => {
         try {
             const response = await apiFetch(`/roleplay/sessions/${sessionId}/end`, 'POST', null, token);
-            onEnd?.(response.nlp_evaluation, sessionId, conversionHistory);
+            handleEnd(response.nlp_evaluation, sessionId, conversionHistory);
         } catch (err) { alert(`Failed to end session: ${err.message}`); }
     };
 

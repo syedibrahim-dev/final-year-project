@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { mcq as mcqApi, conceptMap as conceptMapApi } from '../utils/api';
 import { Sparkles, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
-import { Button } from '../App';
+import { Button } from '../components/ui';
 
 export default function MCQGenerator({ orgId, token }) {
     const [topic, setTopic] = useState('');

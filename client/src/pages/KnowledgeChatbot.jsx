@@ -1,8 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Trash2, Download, MessageSquare, Sparkles, BookOpen } from 'lucide-react';
 import { apiFetch } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { PageHeader, RelatedLinks } from '../components/ui';
 
-const KnowledgeChatbot = ({ orgId, token }) => {
+const KnowledgeChatbot = () => {
+    const { token, user } = useAuth();
+    const orgId = user?.organization_id;
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
@@ -100,19 +104,14 @@ const KnowledgeChatbot = ({ orgId, token }) => {
     };
 
     return (
-        <div className="flex flex-col h-full">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-stone-200">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-teal-700 rounded-xl flex items-center justify-center shadow-md shadow-teal-500/20">
-                        <Sparkles className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                        <h2 className="text-2xl font-bold text-stone-800">Knowledge Assistant</h2>
-                        <p className="text-sm text-stone-500">Ask questions about your training materials</p>
-                    </div>
-                </div>
-                <div className="flex gap-2">
+        <div className="flex flex-col">
+            <PageHeader
+                title="Knowledge Chat"
+                subtitle="Ask questions about your organization's documents and get AI-powered answers"
+                backTo="/dashboard"
+                backLabel="Dashboard"
+                action={
+                    <div className="flex gap-2">
                     <button
                         onClick={handleExport}
                         className="px-4 py-2 text-stone-600 bg-stone-100 hover:bg-stone-200 rounded-xl flex items-center gap-2 transition-colors text-sm font-medium"
@@ -129,8 +128,9 @@ const KnowledgeChatbot = ({ orgId, token }) => {
                         <Trash2 className="w-4 h-4" />
                         Clear
                     </button>
-                </div>
-            </div>
+                    </div>
+                }
+            />
 
             {/* Chat Container */}
             <div className="flex flex-col flex-1 bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-sm">
@@ -241,6 +241,10 @@ const KnowledgeChatbot = ({ orgId, token }) => {
                     </p>
                 </div>
             </div>
+            <RelatedLinks links={[
+                { label: 'Search Docs',     to: '/search' },
+                { label: 'Upload Content',  to: '/content/upload' },
+            ]} />
         </div>
     );
 };

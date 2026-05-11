@@ -5,18 +5,21 @@ class Settings(BaseSettings):
     """Application settings"""
     
     # Database - will read from .env or use default
-    DATABASE_URL: str = "mysql+pymysql://root:shaheer1@localhost:3306/salesforge_db"
+    DATABASE_URL: str = "mysql+pymysql://root:1234@localhost:3306/salesforge_db"
     
     # Security
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     
-    # LLM Configuration — Q8_0 everywhere (22 GPU layers + 11 on 32GB RAM)
+    # LLM Configuration — Q8_0 everywhere
     LOCAL_LLM_MODEL: str = "llama3.1:8b-instruct-q8_0"
-    LOCAL_LLM_BASE_URL: str = "http://localhost:11434"
+    # COLAB MODE: set LOCAL_LLM_BASE_URL to your ngrok tunnel URL (e.g. https://xxxx.ngrok-free.app)
+    # CPU MODE:   keep as http://localhost:11434
+    LOCAL_LLM_BASE_URL: str = "https://flatware-spied-cuddle.ngrok-free.dev"
     LOCAL_LLM_TEMPERATURE: float = 0.7
-    LLM_NUM_GPU: int = 22  # 22/33 layers on GPU, rest spill to system RAM
+    # GPU MODE (revert): set LLM_NUM_GPU = 22  (22/33 layers on GPU, rest spill to system RAM)
+    LLM_NUM_GPU: int = 0  # CPU-only: 0 disables GPU offloading
 
     # MCQ-specific LLM
     MCQ_LLM_MODEL: str = "llama3.1:8b-instruct-q8_0"
@@ -26,11 +29,12 @@ class Settings(BaseSettings):
 
     # Post-session evaluation LLM (same model — no swap needed)
     EVAL_LLM_MODEL: str = "llama3.1:8b-instruct-q8_0"
-    EVAL_NUM_GPU: int = 22
+    # GPU MODE (revert): set EVAL_NUM_GPU = 22
+    EVAL_NUM_GPU: int = 0  # CPU-only
 
     # Multi-Agent Configuration
     ANALYST_LLM_MODEL: str = "llama3.1:8b-instruct-q8_0"
-    ANALYST_SKIP_INTERVAL: int = 1                 # Run analyst every turn (1 = every message)
+    ANALYST_SKIP_INTERVAL: int = 3                 # Run analyst every 3rd turn (reduces Ollama load on CPU/tunnel)
     ENABLE_ANALYST_AGENT: bool = True              # Toggle analyst agent on/off
     ENABLE_COACHING_HINTS: bool = True             # Toggle coaching hints in UI
 
@@ -40,8 +44,10 @@ class Settings(BaseSettings):
     SALESRL_PYTHON: str = r"D:\fyp-2026\venv311_deepmost\Scripts\python.exe"
     SALESRL_PREDICT_INTERVAL: int = 1              # Run prediction every turn
 
-    # Embedding Model (Ollama-served; 768-dim, superior semantic understanding)
+    # Embedding Model (Ollama-served locally; 768-dim, superior semantic understanding)
     EMBEDDING_MODEL: str = "nomic-embed-text"
+    # Embeddings always run locally — separate from LLM which may be on Colab
+    EMBEDDING_BASE_URL: str = "http://localhost:11434"
     
     # ChromaDB
     CHROMA_PERSIST_DIR: str = "./chroma_db"

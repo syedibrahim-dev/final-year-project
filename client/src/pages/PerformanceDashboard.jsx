@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BarChart2, TrendingUp, TrendingDown, Users, Clock, CheckCircle, XCircle, Award, Target, Activity, MessageCircle, Zap, Star } from 'lucide-react';
 import * as d3 from 'd3';
 import { mcq as mcqApi, roleplay as roleplayApi } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { PageHeader, RelatedLinks } from '../components/ui';
 
 // ===== Reusable Stat Card Component =====
 function StatCard({ icon: Icon, label, value, subtitle, color = 'blue' }) {
@@ -32,7 +34,10 @@ function StatCard({ icon: Icon, label, value, subtitle, color = 'blue' }) {
     );
 }
 
-export default function PerformanceDashboard({ orgId, token, userId }) {
+export default function PerformanceDashboard() {
+    const { token, user } = useAuth();
+    const orgId = user?.organization_id;
+    const userId = user?.id;
     // Tab state
     const [activeTab, setActiveTab] = useState('overview');
 
@@ -339,16 +344,12 @@ export default function PerformanceDashboard({ orgId, token, userId }) {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="border-b pb-4">
-                <h3 className="text-2xl font-bold text-gray-800 flex items-center">
-                    <BarChart2 className="mr-2 text-indigo-600" size={28} />
-                    Performance Dashboard
-                </h3>
-                <p className="text-sm text-gray-500 mt-1">
-                    Track your progress across MCQ tests and roleplay sessions
-                </p>
-            </div>
+            <PageHeader
+                title="Performance Dashboard"
+                subtitle="Track your team's progress across MCQ tests and roleplay sessions"
+                backTo="/dashboard"
+                backLabel="Dashboard"
+            />
 
             {/* Tab Navigation */}
             <div className="flex space-x-1 bg-gray-100 rounded-xl p-1">
@@ -674,6 +675,10 @@ export default function PerformanceDashboard({ orgId, token, userId }) {
                     )}
                 </div>
             )}
+            <RelatedLinks links={[
+                { label: 'MCQ Practice', to: '/mcq' },
+                { label: 'AI Roleplay',  to: '/roleplay' },
+            ]} />
         </div>
     );
 }

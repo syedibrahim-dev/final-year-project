@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../utils/api';
-import { 
-    Package, AlertTriangle, TrendingUp, Calendar, 
-    RefreshCw, Loader2, DollarSign, Box 
+import {
+    Package, AlertTriangle, TrendingUp, Calendar,
+    RefreshCw, Loader2, DollarSign, Box
 } from 'lucide-react';
-import { Card, Button } from '../App';
+import { useAuth } from '../context/AuthContext';
+import { Button, PageHeader, RelatedLinks } from '../components/ui';
 
-const InventoryManagerView = ({ orgId, token }) => {
+const InventoryManagerView = () => {
+    const { token, user } = useAuth();
+    const orgId = user?.organization_id;
     const [products, setProducts] = useState([]);
     const [alerts, setAlerts] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -57,26 +60,18 @@ const InventoryManagerView = ({ orgId, token }) => {
     }
 
     return (
-        <div className="space-y-8">
-            <div className="mb-8 bg-gradient-to-r from-cyan-50 via-blue-50 to-indigo-50 p-6 rounded-3xl border-2 border-cyan-100 flex justify-between items-center">
-                <div>
-                    <h3 className="text-3xl font-black text-slate-800 mb-2 flex items-center space-x-3">
-                        <div className="p-3 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-2xl shadow-lg shadow-cyan-500/30">
-                            <Box size={26} />
-                        </div>
-                        <span className="bg-gradient-to-r from-cyan-600 to-blue-700 bg-clip-text text-transparent">
-                            Inventory Forecasting
-                        </span>
-                    </h3>
-                </div>
-                <Button 
-                    onClick={fetchData} 
-                    className="w-auto px-6"
-                >
-                    <RefreshCw size={18} className="mr-2" />
-                    Refresh
-                </Button>
-            </div>
+        <div className="space-y-6">
+            <PageHeader
+                title="Inventory Forecasts"
+                subtitle="AI-powered demand forecasting and stock-level recommendations"
+                backTo="/dashboard"
+                backLabel="Dashboard"
+                action={
+                    <Button onClick={fetchData} variant="secondary" size="sm">
+                        <RefreshCw size={14} className="mr-1.5" /> Refresh
+                    </Button>
+                }
+            />
 
             {error && (
                 <div className="bg-rose-50 border-2 border-rose-200 text-rose-700 p-4 rounded-xl mb-6 font-semibold flex items-center">
@@ -193,6 +188,10 @@ const InventoryManagerView = ({ orgId, token }) => {
                     })
                 )}
             </div>
+            <RelatedLinks links={[
+                { label: 'Transaction Analytics', to: '/analytics' },
+                { label: 'Lead Scoring',          to: '/leads' },
+            ]} />
         </div>
     );
 };

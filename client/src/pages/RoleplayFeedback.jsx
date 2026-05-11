@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { Loader2, Award, TrendingUp, AlertCircle, CheckCircle, ArrowLeft, BarChart3, FileText, Target, Lightbulb, Heart, MessageCircle, RefreshCw, Activity } from 'lucide-react';
 import * as d3 from 'd3';
 import { apiFetch } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 
 // ── D3 Conversion Trajectory Chart ──────────────────────────────────
 function ConversionTrajectoryChart({ probabilities, turningPoints = [] }) {
@@ -147,7 +149,20 @@ function ConversionTrajectoryChart({ probabilities, turningPoints = [] }) {
     );
 }
 
-export default function RoleplayFeedback({ sessionId, token, onBack, initialNlpData, conversionHistory }) {
+export default function RoleplayFeedback({ sessionId: sessionIdProp, token: tokenProp, onBack, initialNlpData: initialNlpDataProp, conversionHistory: conversionHistoryProp }) {
+    // Support both legacy props AND React Router URL params
+    const params = useParams();
+    const location = useLocation();
+    const routerNavigate = useNavigate();
+    const { token: ctxToken } = useAuth();
+
+    const sessionId = sessionIdProp || params.sessionId;
+    const token = tokenProp || ctxToken;
+    const initialNlpData = initialNlpDataProp || location.state?.nlpData || null;
+    const conversionHistory = conversionHistoryProp || location.state?.convHistory || null;
+
+    const handleBack = onBack || (() => routerNavigate('/roleplay'));
+
     const [nlpEvaluation, setNlpEvaluation] = useState(initialNlpData || null);
     const [llmFeedback, setLlmFeedback] = useState(null);
     const [loadingNlp, setLoadingNlp] = useState(!initialNlpData);
@@ -225,7 +240,7 @@ export default function RoleplayFeedback({ sessionId, token, onBack, initialNlpD
                         <AlertCircle className="h-7 w-7 text-red-500" />
                     </div>
                     <p className="text-red-600 font-semibold mb-3">{error}</p>
-                    <button onClick={onBack} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+                    <button onClick={handleBack} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
                         Go Back
                     </button>
                 </div>
@@ -244,7 +259,7 @@ export default function RoleplayFeedback({ sessionId, token, onBack, initialNlpD
                     <p className="text-slate-500 text-sm">NLP Analysis + AI Coach Insights</p>
                 </div>
                 <button
-                    onClick={onBack}
+                    onClick={handleBack}
                     className="flex items-center space-x-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-medium text-slate-600 transition-colors"
                 >
                     <ArrowLeft size={14} />

@@ -17,7 +17,7 @@ class MCQEvaluator:
             model=llm_model or settings.MCQ_LLM_MODEL,
             temperature=0.3,  # Lower temperature for more consistent evaluation
             base_url=settings.LOCAL_LLM_BASE_URL,
-            num_gpu=24  # Partial GPU offloading for 6GB VRAM
+            num_gpu=getattr(settings, 'EVAL_NUM_GPU', 0)  # GPU MODE (revert): set EVAL_NUM_GPU=22 in settings.py
         )
     
     def evaluate_mcq(

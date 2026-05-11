@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Book, FileText, Trash2, Loader2, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
-import { content as contentApi } from '../utils/api'; 
-import { Button } from '../App';
+import { content as contentApi } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { Button, PageHeader, RelatedLinks } from '../components/ui';
 
 // --- Single Content Item Component ---
 const ContentItem = ({ contentItem, onDelete, deleteState }) => {
@@ -115,7 +116,9 @@ const ContentItem = ({ contentItem, onDelete, deleteState }) => {
 };
 
 // --- Main View to List Uploaded Documents ---
-function ContentManagerView({ orgId, token }) {
+function ContentManagerView() {
+    const { token, user } = useAuth();
+    const orgId = user?.organization_id;
     const [contentList, setContentList] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -264,26 +267,23 @@ function ContentManagerView({ orgId, token }) {
 
     return (
         <div>
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-2xl font-bold text-gray-800 flex items-center space-x-3">
-                    <Book size={24} className="text-indigo-600" /> 
-                    <span>Manage Training Content</span>
-                </h3>
-                
-                <button
-                    onClick={handleRefresh}
-                    disabled={refreshing}
-                    className="flex items-center space-x-2 px-3 py-2 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
-                >
-                    <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-                    <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
-                </button>
-            </div>
-            
-            <p className="mb-6 text-gray-600">
-                View, manage, and delete your knowledge sources. Supports documents, scraped URLs, and transcribed audio/video.
-            </p>
-            
+            <PageHeader
+                title="Manage Content"
+                subtitle="View, search, and delete training documents in your knowledge base"
+                backTo="/dashboard"
+                backLabel="Dashboard"
+                action={
+                    <button
+                        onClick={handleRefresh}
+                        disabled={refreshing}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                        <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                        <span>{refreshing ? 'Refreshing…' : 'Refresh'}</span>
+                    </button>
+                }
+            />
+
             {/* Loading State */}
             {loading && (
                 <div className="text-center p-12">
@@ -346,6 +346,10 @@ function ContentManagerView({ orgId, token }) {
                     </div>
                 </>
             )}
+            <RelatedLinks links={[
+                { label: 'Upload Content',  to: '/content/upload' },
+                { label: 'Knowledge Chat',  to: '/knowledge-chat' },
+            ]} />
         </div>
     );
 }

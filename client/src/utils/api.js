@@ -248,6 +248,15 @@ export const storeAnalytics = {
       apiFetch(`/analytics/anomalies?days=${days}`, 'GET', null, token),
 };
 
+// ========== CONCEPT MAP APIs ==========
+export const conceptMap = {
+  listConcepts: (orgId, filter, token) =>
+      apiFetch(`/orgs/${orgId}/concepts/`, 'GET', null, token),
+
+  getConcept: (orgId, nodeId, token) =>
+      apiFetch(`/orgs/${orgId}/concepts/${nodeId}`, 'GET', null, token),
+};
+
 // ========== LEAD SCORING APIs (Module 5a) ==========
 export const leadsApi = {
   analyzeColumns: (file, token) => {

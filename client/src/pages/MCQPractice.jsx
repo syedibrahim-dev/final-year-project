@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Brain, CheckCircle, XCircle, RefreshCw, Loader2, Award, AlertCircle, Trophy, Trash2 } from 'lucide-react';
 import { mcq as mcqApi } from '../utils/api';
-import { Button } from '../App';
+import { useAuth } from '../context/AuthContext';
+import { Button, PageHeader, RelatedLinks } from '../components/ui';
 
-export default function MCQPracticeView({ orgId, token }) {
+export default function MCQPracticeView() {
+    const { token, user } = useAuth();
+    const orgId = user?.organization_id;
     const [tests, setTests] = useState([]);
     const [selectedTest, setSelectedTest] = useState(null);
     const [testDetails, setTestDetails] = useState(null);
@@ -164,15 +167,12 @@ export default function MCQPracticeView({ orgId, token }) {
     if (!selectedTest) {
         return (
             <div className="space-y-6">
-                <div className="border-b pb-4">
-                    <h3 className="text-2xl font-bold text-stone-800 flex items-center">
-                        <Brain className="mr-2 text-blue-600" size={28} />
-                        MCQ Practice
-                    </h3>
-                    <p className="text-sm text-stone-500 mt-1">
-                        Select a test to practice and improve your knowledge
-                    </p>
-                </div>
+                <PageHeader
+                    title="MCQ Practice"
+                    subtitle="Select a test to practice and improve your knowledge"
+                    backTo="/dashboard"
+                    backLabel="Dashboard"
+                />
 
                 {error && (
                     <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -244,6 +244,10 @@ export default function MCQPracticeView({ orgId, token }) {
                         ))}
                     </div>
                 )}
+                <RelatedLinks links={[
+                    { label: 'Performance Dashboard', to: '/performance' },
+                    { label: 'Create MCQ Test',       to: '/tests/create' },
+                ]} />
             </div>
         );
     }

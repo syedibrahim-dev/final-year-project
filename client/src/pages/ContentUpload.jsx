@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Upload, CheckCircle, AlertCircle, Loader2, FileText, Globe, Video, Link } from 'lucide-react';
 import { content as contentApi } from '../utils/api';
-import { Card, Input, Button } from '../App';
+import { useAuth } from '../context/AuthContext';
+import { Input, Button, PageHeader, RelatedLinks } from '../components/ui';
 
 // ── Tab Button ──
 const TabButton = ({ active, icon: Icon, label, onClick }) => (
@@ -96,7 +97,9 @@ const StatusMessage = ({ message }) => {
     );
 };
 
-export default function ContentUploadView({ orgId, token, user }) {
+export default function ContentUploadView() {
+    const { token, user } = useAuth();
+    const orgId = user?.organization_id;
     const [activeTab, setActiveTab] = useState('document');
     
     // Document upload state
@@ -216,9 +219,16 @@ export default function ContentUploadView({ orgId, token, user }) {
     };
 
     return (
-        <Card title="Add Knowledge Sources" icon={<Upload size={24} />}>
-            <p className="mb-4 text-gray-600 text-sm">
-                Add training materials from documents, websites, or audio/video to build your knowledge base for roleplay and MCQs.
+        <div>
+        <PageHeader
+            title="Upload Content"
+            subtitle="Add training materials to your knowledge base — documents, URLs, or media"
+            backTo="/dashboard"
+            backLabel="Dashboard"
+        />
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <p className="mb-4 text-slate-500 text-sm">
+                Supported: PDF, DOCX, TXT, MP3, MP4, or import from a URL.
             </p>
 
             {/* Tab Selector */}
@@ -389,6 +399,11 @@ export default function ContentUploadView({ orgId, token, user }) {
             {/* Status & Results (shared across all tabs) */}
             <StatusMessage message={message} />
             {result && <ResultCard result={result} type={activeTab} />}
-        </Card>
+        </div>
+        <RelatedLinks links={[
+            { label: 'Manage Content',  to: '/content/manage' },
+            { label: 'Knowledge Chat',  to: '/knowledge-chat' },
+        ]} />
+        </div>
     );
 }

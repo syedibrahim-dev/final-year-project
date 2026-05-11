@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Upload, Users, TrendingUp, UserCheck, AlertTriangle, ChevronDown, Eye, RefreshCw, Filter, Trash2 } from 'lucide-react';
 import { leadsApi } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { PageHeader, RelatedLinks } from '../components/ui';
 
 // Allocation badge colors
 const ALLOCATION_STYLES = {
@@ -414,7 +416,8 @@ const LeadDetailModal = ({ lead, onClose, onUpdate, token }) => {
 };
 
 // ===== Main Component =====
-export default function LeadManager({ token }) {
+export default function LeadManager() {
+    const { token } = useAuth();
     const [leads, setLeads] = useState([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -478,37 +481,25 @@ export default function LeadManager({ token }) {
 
     return (
         <div>
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h2 className="text-2xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                        Lead Scoring
-                    </h2>
-                    <p className="text-sm text-slate-500 mt-1">Upload leads, score with ML, and manage outreach</p>
-                </div>
-                <div className="flex space-x-2">
-                    <button
-                        onClick={() => setIsBulkModalOpen(true)}
-                        className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-colors flex items-center"
-                    >
-                        <span className="mr-2">🚀</span> Send AI Outreach
-                    </button>
-                    <button
-                        onClick={handleClearLeads}
-                        className="p-2.5 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors"
-                        title="Delete All Leads"
-                    >
-                        <Trash2 size={16} className="text-rose-500" />
-                    </button>
-                    <button
-                        onClick={fetchLeads}
-                        className="p-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
-                        title="Refresh"
-                    >
-                        <RefreshCw size={16} className="text-slate-500" />
-                    </button>
-                </div>
-            </div>
+            <PageHeader
+                title="Lead Scoring"
+                subtitle="Upload CRM leads, score with ML for win probability, and prioritize outreach"
+                backTo="/dashboard"
+                backLabel="Dashboard"
+                action={
+                    <div className="flex gap-2">
+                        <button onClick={() => setIsBulkModalOpen(true)} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition flex items-center gap-1.5">
+                            <span>🚀</span> AI Outreach
+                        </button>
+                        <button onClick={handleClearLeads} className="p-2 bg-red-50 hover:bg-red-100 rounded-lg transition" title="Clear all leads">
+                            <Trash2 size={15} className="text-red-500" />
+                        </button>
+                        <button onClick={fetchLeads} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition" title="Refresh">
+                            <RefreshCw size={15} className="text-slate-500" />
+                        </button>
+                    </div>
+                }
+            />
 
             {/* Upload */}
             <UploadSection token={token} onUploadComplete={fetchLeads} />
@@ -634,6 +625,11 @@ export default function LeadManager({ token }) {
                     isSubmitting={triggeringBulk}
                 />
             )}
+            <RelatedLinks links={[
+                { label: 'AI Roleplay',           to: '/roleplay' },
+                { label: 'Marketing Posts',        to: '/marketing' },
+                { label: 'Transaction Analytics',  to: '/analytics' },
+            ]} />
         </div>
     );
 }

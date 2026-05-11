@@ -60,20 +60,30 @@ class OllamaLLMProxy:
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
-                "num_gpu": 99,
+                "num_gpu": 0,  # CPU-only; GPU MODE (revert): set to 99
             },
             "keep_alive": self.keep_alive,
         }
         if stop:
             payload["options"]["stop"] = stop
 
-        resp = requests.post(
-            f"{self.base_url}/api/chat",
-            json=payload,
-            timeout=120,
-        )
-        resp.raise_for_status()
-        return resp.json().get("message", {}).get("content", "")
+        import time as _time
+        last_error = None
+        for attempt in range(3):
+            try:
+                resp = requests.post(
+                    f"{self.base_url}/api/chat",
+                    json=payload,
+                    timeout=120,
+                )
+                resp.raise_for_status()
+                return resp.json().get("message", {}).get("content", "")
+            except (requests.exceptions.ConnectionError,
+                    requests.exceptions.ChunkedEncodingError) as e:
+                last_error = e
+                _time.sleep(1.5 * (attempt + 1))
+                continue
+        raise last_error
 
     # ── Text completion (llama_cpp.__call__) ─────────────────────────
 

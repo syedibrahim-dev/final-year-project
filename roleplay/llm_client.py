@@ -69,23 +69,35 @@ class OllamaClient:
             }
         }
         
-        try:
-            response = requests.post(
-                self.chat_endpoint,
-                json=payload,
-                timeout=timeout  # Use parameter instead of hardcoded value
-            )
-            response.raise_for_status()
-            
-            result = response.json()
-            content = result["message"]["content"]
-            # Remove leading/trailing quotation marks if present
-            return content.strip().strip('"').strip("'")
-        
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"Ollama API call failed: {str(e)}")
-        except KeyError as e:
-            raise Exception(f"Unexpected response format: {str(e)}")
+        import time as _time
+        last_error = None
+        for attempt in range(3):
+            try:
+                response = requests.post(
+                    self.chat_endpoint,
+                    json=payload,
+                    timeout=timeout,
+                )
+                # Retry on 503 (Ollama busy) with backoff
+                if response.status_code == 503:
+                    last_error = Exception(f"Ollama API call failed: {response.status_code} Server Error")
+                    _time.sleep(3 * (attempt + 1))
+                    continue
+                response.raise_for_status()
+                result = response.json()
+                content = result["message"]["content"]
+                return content.strip().strip('"').strip("'")
+            except (requests.exceptions.ConnectionError,
+                    requests.exceptions.ChunkedEncodingError) as e:
+                # Stale connection — wait briefly and retry with a fresh socket
+                last_error = e
+                _time.sleep(2 * (attempt + 1))
+                continue
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Ollama API call failed: {str(e)}")
+            except KeyError as e:
+                raise Exception(f"Unexpected response format: {str(e)}")
+        raise Exception(f"Ollama API call failed after 3 attempts: {str(last_error)}")
     
     def stream_response(
         self,

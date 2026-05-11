@@ -58,7 +58,7 @@ class EmbeddingManager:
             print(f"  Loading embedding model via Ollama: {self.model_name}")
             self._embedding_function = NormalizedOllamaEmbeddings(
                 model=self.model_name,
-                base_url=settings.LOCAL_LLM_BASE_URL,
+                base_url=getattr(settings, 'EMBEDDING_BASE_URL', 'http://localhost:11434'),
             )
             print(f"  Embedding model loaded successfully")
         return self._embedding_function

@@ -5,6 +5,8 @@ import {
     RefreshCw, Eye, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { apiFetch } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { PageHeader, RelatedLinks } from '../components/ui';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -725,7 +727,10 @@ function Section({ icon, title, children }) {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export default function MarketingPostCreator({ token, genState, setGenState }) {
+export default function MarketingPostCreator() {
+    const { token } = useAuth();
+    // genState is now local (was hoisted to DashboardView for sidebar-nav survival — no longer needed with real routing)
+    const [genState, setGenState] = useState({ jobId: null, loading: false, status: '', image: null });
     const [tab, setTab] = useState('create');
 
     const TABS = [
@@ -735,18 +740,12 @@ export default function MarketingPostCreator({ token, genState, setGenState }) {
 
     return (
         <div>
-            {/* Header */}
-            <div className="mb-6 bg-gradient-to-r from-violet-50 via-pink-50 to-rose-50 p-6 rounded-3xl border-2 border-violet-100">
-                <h2 className="text-3xl font-black bg-gradient-to-r from-violet-600 via-pink-600 to-rose-600 bg-clip-text text-transparent flex items-center gap-3">
-                    <span className="p-3 bg-gradient-to-br from-violet-500 to-pink-500 rounded-2xl shadow-lg shadow-violet-500/30 text-white">
-                        <ImageIcon size={26} />
-                    </span>
-                    AI Marketing Posts
-                </h2>
-                <p className="text-slate-600 mt-2 ml-16 text-sm">
-                    Generate images with FLUX · Write captions with AI · Schedule to Facebook, Instagram &amp; LinkedIn
-                </p>
-            </div>
+            <PageHeader
+                title="Marketing Posts"
+                subtitle="Generate AI images with FLUX · Write captions with AI · Schedule to LinkedIn &amp; more"
+                backTo="/dashboard"
+                backLabel="Dashboard"
+            />
 
             {/* Tabs */}
             <div className="flex gap-2 mb-6 bg-slate-100 p-1.5 rounded-2xl w-fit">
@@ -766,6 +765,10 @@ export default function MarketingPostCreator({ token, genState, setGenState }) {
             </div>
 
             {tab === 'create' ? <CreatePostTab token={token} genState={genState} setGenState={setGenState} /> : <AllPostsTab token={token} />}
+            <RelatedLinks links={[
+                { label: 'Lead Scoring',             to: '/leads' },
+                { label: 'Transaction Analytics',    to: '/analytics' },
+            ]} />
         </div>
     );
 }

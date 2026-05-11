@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { 
-    TrendingUp, Activity, DollarSign, ShoppingCart, 
+import {
+    TrendingUp, Activity, DollarSign, ShoppingCart,
     AlertTriangle, Package, Calendar, RefreshCw
 } from 'lucide-react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, AreaChart, Area
 } from 'recharts';
 import { storeAnalytics } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { PageHeader, RelatedLinks } from '../components/ui';
 
-const TransactionAnalytics = ({ token }) => {
+const TransactionAnalytics = () => {
+    const { token } = useAuth();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
@@ -87,23 +90,18 @@ const TransactionAnalytics = ({ token }) => {
     if (!data) return null;
 
     return (
-        <div className="max-w-6xl mx-auto space-y-6">
-            <div className="flex justify-between items-center mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div>
-                    <h2 className="text-3xl font-black bg-gradient-to-r from-blue-700 to-indigo-600 bg-clip-text text-transparent mb-1 flex items-center">
-                        <Activity className="mr-3 text-blue-600" size={28} />
-                        Transaction Analytics
-                    </h2>
-                    <p className="text-slate-500 font-medium ml-10">Monitor store performance, trends, and anomalies</p>
-                </div>
-                <button 
-                    onClick={fetchData}
-                    className="flex items-center space-x-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition"
-                >
-                    <RefreshCw size={18} />
-                    <span>Refresh</span>
-                </button>
-            </div>
+        <div className="space-y-6">
+            <PageHeader
+                title="Transaction Analytics"
+                subtitle="Detect anomalies and trends in your transaction data with ML-powered analysis"
+                backTo="/dashboard"
+                backLabel="Dashboard"
+                action={
+                    <button onClick={fetchData} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold transition">
+                        <RefreshCw size={14} /> Refresh
+                    </button>
+                }
+            />
 
             {/* KPIs */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -243,6 +241,10 @@ const TransactionAnalytics = ({ token }) => {
                     </div>
                 </div>
             </div>
+            <RelatedLinks links={[
+                { label: 'Inventory Forecasts', to: '/inventory' },
+                { label: 'Lead Scoring',        to: '/leads' },
+            ]} />
         </div>
     );
 };

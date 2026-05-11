@@ -187,7 +187,7 @@ Answer briefly:"""
                         "num_predict": 250,  # ✅ LIMIT LENGTH
                         "num_ctx": 2048,     # ✅ SMALLER CONTEXT
                         "top_p": 0.9,
-                        "num_gpu": 24  # Partial GPU offloading for 6GB VRAM
+                        "num_gpu": 0  # CPU-only; GPU MODE (revert): set to 24
                     }
                 },
                 stream=True,

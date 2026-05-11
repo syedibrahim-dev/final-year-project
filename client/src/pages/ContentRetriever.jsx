@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Search, Link, BookOpen, Loader2, AlertCircle } from 'lucide-react';
-import { content as contentApi } from '../utils/api'; 
-import { Input, Button } from '../App'; 
+import { content as contentApi } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { Input, Button, PageHeader, RelatedLinks } from '../components/ui';
 
 // Component to display a single search result chunk
 const ChunkResult = ({ chunk, source, page, score, index }) => (
@@ -33,7 +34,9 @@ const ChunkResult = ({ chunk, source, page, score, index }) => (
     </div>
 );
 
-function ContentRetrieverView({ orgId, token }) {
+function ContentRetrieverView() {
+    const { token, user } = useAuth();
+    const orgId = user?.organization_id;
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -128,14 +131,12 @@ function ContentRetrieverView({ orgId, token }) {
 
     return (
         <>
-            <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center space-x-3 border-b pb-3">
-                <BookOpen size={24} className="text-indigo-600"/> 
-                <span>Search Knowledge Base</span>
-            </h3>
-            
-            <p className="mb-6 text-gray-600">
-                Ask questions about your training materials. The AI will find the most relevant passages from your uploaded content.
-            </p>
+            <PageHeader
+                title="Search Docs"
+                subtitle="Run semantic searches across your training content to find specific information"
+                backTo="/dashboard"
+                backLabel="Dashboard"
+            />
 
             {/* Search Form */}
             <form onSubmit={handleSearch} className="space-y-4 mb-8 max-w-2xl">
@@ -251,6 +252,11 @@ function ContentRetrieverView({ orgId, token }) {
                     </div>
                 )}
             </div>
+            <RelatedLinks links={[
+                { label: 'Knowledge Chat',   to: '/knowledge-chat' },
+                { label: 'Manage Content',   to: '/content/manage' },
+                { label: 'Upload Content',   to: '/content/upload' },
+            ]} />
         </>
     );
 }
