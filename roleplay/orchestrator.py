@@ -68,6 +68,13 @@ class AgentOrchestrator:
         self.analyst_agent = AnalystAgent()
         self.performance_agent = PerformanceAgent()
 
+        # Lazy: only instantiated when ENABLE_AGENTIC_EVALUATOR flag is on.
+        # Keeps import-time side effects to zero for the default code path.
+        self._agentic_evaluator = None
+
+        # Lazy: only instantiated when ENABLE_AGENTIC_FACT_CHECK flag is on.
+        self._agentic_fact_checker = None
+
         # Guardrail (input validation — runs first)
         self.guardrail_agent = GuardrailAgent()
 
@@ -544,9 +551,78 @@ class AgentOrchestrator:
             eq_scores=self._eq_scores.get(session_id, []),
         )
 
-        # Run Performance Agent
-        perf_result = self.performance_agent.run(ctx)
-        data = perf_result.data
+        # ── Run evaluator ──
+        # Agentic evaluator (tool-use loop) is preferred when the feature flag
+        # is on. Falls back to the classic single-prompt PerformanceAgent on:
+        #   • flag OFF
+        #   • agentic evaluator raises (Ollama down, tool loop crash, parse fail)
+        #   • agentic evaluator returns empty data (no-op safety)
+        # Fallback is silent to the user — the /evaluate response shape is
+        # identical either way. Logs tell us which path ran.
+        data: Dict[str, Any] = {}
+        evaluator_used = "performance"   # default label for logging
+
+        if getattr(settings, "ENABLE_AGENTIC_EVALUATOR", False):
+            try:
+                # Lazy-import + lazy-instantiate so a misconfiguration here
+                # never affects the hot path or module import.
+                if self._agentic_evaluator is None:
+                    from roleplay.agents.agentic_evaluator import AgenticEvaluator
+                    self._agentic_evaluator = AgenticEvaluator()
+
+                agentic_result = self._agentic_evaluator.run(ctx)
+                if agentic_result.success and agentic_result.data:
+                    data = agentic_result.data
+                    evaluator_used = "agentic"
+                    logger.info(
+                        f"AgenticEvaluator succeeded in {agentic_result.latency_ms:.0f}ms"
+                    )
+                else:
+                    logger.warning(
+                        f"AgenticEvaluator returned empty/failed — falling back. "
+                        f"Error: {agentic_result.error}"
+                    )
+            except Exception as _ae_err:
+                logger.warning(
+                    f"AgenticEvaluator raised — falling back to PerformanceAgent. "
+                    f"Error: {_ae_err}"
+                )
+
+        if not data:
+            # Fallback (or default) path — classic PerformanceAgent
+            perf_result = self.performance_agent.run(ctx)
+            data = perf_result.data
+            evaluator_used = "performance"
+
+        # Attach transparency marker so downstream logs / responses know which path ran
+        data["_evaluator_used"] = evaluator_used
+
+        # ── Optional deep fact-check (additive, never breaks eval) ──
+        # Appends `fact_check_report` to the evaluation output. If the flag is
+        # off or the agent fails for any reason, the key is simply absent —
+        # frontend / DB storage keep working exactly as before.
+        if getattr(settings, "ENABLE_AGENTIC_FACT_CHECK", False):
+            try:
+                if self._agentic_fact_checker is None:
+                    from roleplay.agents.agentic_fact_checker import AgenticFactChecker
+                    self._agentic_fact_checker = AgenticFactChecker()
+
+                fc_result = self._agentic_fact_checker.run(ctx)
+                if fc_result.success and fc_result.data:
+                    data["fact_check_report"] = fc_result.data
+                    logger.info(
+                        f"AgenticFactChecker: {fc_result.data.get('claims_analyzed', 0)} "
+                        f"claims analysed in {fc_result.latency_ms:.0f}ms"
+                    )
+                else:
+                    logger.warning(
+                        f"AgenticFactChecker returned empty/failed — skipping report. "
+                        f"Error: {fc_result.error}"
+                    )
+            except Exception as _fc_err:
+                logger.warning(
+                    f"AgenticFactChecker raised — skipping report. Error: {_fc_err}"
+                )
 
         # Inject session-level EQ summary into performance data
         eq_history = self._eq_scores.get(session_id, [])

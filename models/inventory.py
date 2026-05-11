@@ -32,16 +32,34 @@ class Product(Base):
     forecasts = relationship("InventoryForecast", back_populates="product", cascade="all, delete-orphan")
     alerts = relationship("StockAlert", back_populates="product", cascade="all, delete-orphan")
 
+class Customer(Base):
+    __tablename__ = "customers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
+    external_id = Column(String(100), nullable=True, index=True)  # Shopify / Online Retail customer id
+    email = Column(String(255), nullable=True)
+    country = Column(String(100), nullable=True)
+    first_purchase_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    store = relationship("Store", backref="customers")
+    transactions = relationship("SalesTransaction", back_populates="customer")
+
+
 class SalesTransaction(Base):
     __tablename__ = "sales_transactions"
 
     id = Column(Integer, primary_key=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    customer_id = Column(Integer, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True)
+    invoice_no = Column(String(50), nullable=True, index=True)   # groups transactions into orders (Shopify order id / Online Retail invoice)
     quantity = Column(Integer, nullable=False)
     sale_date = Column(DateTime, default=datetime.utcnow, index=True)
     total_amount = Column(Float, nullable=True)
-    
+
     product = relationship("Product", back_populates="transactions")
+    customer = relationship("Customer", back_populates="transactions")
 
 class InventoryForecast(Base):
     __tablename__ = "inventory_forecasts"

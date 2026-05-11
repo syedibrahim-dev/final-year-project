@@ -138,6 +138,24 @@ except ImportError as e:
     print(f"❌ Failed to import analytics routes: {e}")
     traceback.print_exc()
 
+# Customer Analytics routes — RFM, BG/NBD CLV, Cohort Retention
+try:
+    from routes import customer_analytics
+    routes_to_import.append(("customer_analytics", customer_analytics))
+    print("✅ Customer Analytics routes imported")
+except ImportError as e:
+    print(f"❌ Failed to import customer_analytics routes: {e}")
+    traceback.print_exc()
+
+# Store Integrations routes — FakeStore, Swell, Shopify, etc.
+try:
+    from routes import integrations
+    routes_to_import.append(("integrations", integrations))
+    print("✅ Integrations routes imported")
+except ImportError as e:
+    print(f"❌ Failed to import integrations routes: {e}")
+    traceback.print_exc()
+
 # Lead scoring routes (Module 5a)
 try:
     from routes import leads
@@ -192,16 +210,31 @@ try:
         trigger="interval", seconds=60,
         id="publish_scheduled_posts",
     )
-    _scheduler.add_job(
-        _run_forecast_refresh_job,
-        trigger="interval", hours=6,
-        id="refresh_inventory_forecasts",
-        next_run_time=datetime.now() + timedelta(minutes=5),  # delay first run by 5 min after startup
-    )
+
+    # Optional forecast refresh — disabled by default because running Prophet on
+    # a full catalog (e.g. 4,000+ products from Online Retail II) takes hours
+    # per cycle. Manual trigger endpoint remains available any time.
+    try:
+        from config.settings import settings as _settings
+        _enable_forecast_refresh = getattr(_settings, "ENABLE_SCHEDULED_FORECAST_REFRESH", False)
+    except Exception:
+        _enable_forecast_refresh = False
+
+    if _enable_forecast_refresh:
+        _scheduler.add_job(
+            _run_forecast_refresh_job,
+            trigger="interval", hours=6,
+            id="refresh_inventory_forecasts",
+            next_run_time=datetime.now() + timedelta(minutes=5),
+        )
+
     _scheduler.start()
     print("✅ APScheduler started")
     print("   • publish_due_posts        — every 60 s")
-    print("   • refresh_all_forecasts    — every 6 h (first run in 5 min)")
+    if _enable_forecast_refresh:
+        print("   • refresh_all_forecasts    — every 6 h (first run in 5 min)")
+    else:
+        print("   • refresh_all_forecasts    — disabled (use POST /inventory/refresh-all-forecasts to trigger manually)")
 except ImportError:
     print("⚠️  apscheduler not installed — scheduled jobs won't run.")
     print("   Run:  pip install apscheduler")
@@ -278,6 +311,18 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Gracefully shut down background services."""
+    # Stop APScheduler BEFORE its thread pool gets auto-destroyed by Python's
+    # atexit hooks. Without this, the scheduler keeps trying to submit jobs
+    # to a shut-down pool and raises "cannot schedule new futures after shutdown".
+    try:
+        global _scheduler
+        if '_scheduler' in globals() and _scheduler is not None:
+            if _scheduler.running:
+                _scheduler.shutdown(wait=False)
+                print("✅ APScheduler stopped")
+    except Exception as e:
+        print(f"⚠️  Scheduler shutdown error (non-fatal): {e}")
+
     try:
         from services.conversion_service import get_conversion_service
         get_conversion_service().shutdown()

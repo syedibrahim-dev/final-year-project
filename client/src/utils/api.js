@@ -242,10 +242,93 @@ export const roleplay = {
 
 // ========== STORE ANALYTICS APIs (Module 5f) ==========
 export const storeAnalytics = {
-  getDashboard: (token) => apiFetch('/analytics/dashboard', 'GET', null, token),
-  
-  getAnomalies: (token, days = 60) => 
-      apiFetch(`/analytics/anomalies?days=${days}`, 'GET', null, token),
+  getDashboard: (token, storeId = null) => {
+    const qs = storeId ? `?store_id=${storeId}` : '';
+    return apiFetch(`/analytics/dashboard${qs}`, 'GET', null, token);
+  },
+
+  getAnomalies: (token, { days = 60, storeId = null } = {}) => {
+    const params = new URLSearchParams();
+    params.append('days', days);
+    if (storeId) params.append('store_id', storeId);
+    return apiFetch(`/analytics/anomalies?${params.toString()}`, 'GET', null, token);
+  },
+};
+
+// ========== CUSTOMER ANALYTICS APIs (RFM + BG/NBD CLV + Cohort) ==========
+export const customerAnalytics = {
+  listStores: (token) =>
+      apiFetch('/analytics/stores', 'GET', null, token),
+
+  getRfm: (token, storeId = null) => {
+    const qs = storeId ? `?store_id=${storeId}` : '';
+    return apiFetch(`/analytics/rfm${qs}`, 'GET', null, token);
+  },
+
+  getClv: (token, { storeId = null, forecastMonths = 12, discountRate = 0.01 } = {}) => {
+    const params = new URLSearchParams();
+    if (storeId) params.append('store_id', storeId);
+    params.append('forecast_months', forecastMonths);
+    params.append('discount_rate', discountRate);
+    return apiFetch(`/analytics/clv?${params.toString()}`, 'GET', null, token);
+  },
+
+  getCohortRetention: (token, { storeId = null, maxMonths = 12 } = {}) => {
+    const params = new URLSearchParams();
+    if (storeId) params.append('store_id', storeId);
+    params.append('max_months', maxMonths);
+    return apiFetch(`/analytics/cohort-retention?${params.toString()}`, 'GET', null, token);
+  },
+};
+
+// ========== INVENTORY APIs (forecasting + alerts, store-scoped) ==========
+export const inventory = {
+  getProducts: (token, storeId = null) => {
+    const qs = storeId ? `?store_id=${storeId}` : '';
+    return apiFetch(`/inventory/products${qs}`, 'GET', null, token);
+  },
+
+  getAlerts: (token, storeId = null) => {
+    const qs = storeId ? `?store_id=${storeId}` : '';
+    return apiFetch(`/inventory/alerts${qs}`, 'GET', null, token);
+  },
+
+  triggerForecast: (productId, token) =>
+      apiFetch(`/inventory/forecast/${productId}`, 'POST', null, token),
+
+  // Synchronous bulk refresh (admin, blocks until done — use for small stores only)
+  refreshAllForecasts: (token) =>
+      apiFetch('/inventory/refresh-all-forecasts', 'POST', null, token),
+
+  // Async bulk refresh: returns a job id immediately, poll getRefreshJob for progress
+  startRefreshJob: (token, storeId = null) => {
+    const qs = storeId ? `?store_id=${storeId}` : '';
+    return apiFetch(`/inventory/refresh-all-forecasts/async${qs}`, 'POST', null, token);
+  },
+
+  getRefreshJob: (token, jobId) =>
+      apiFetch(`/inventory/refresh-jobs/${jobId}`, 'GET', null, token),
+};
+
+// ========== STORE INTEGRATIONS APIs (connect external platforms) ==========
+export const integrations = {
+  listPlatforms: (token) =>
+      apiFetch('/integrations/platforms', 'GET', null, token),
+
+  listConnected: (token) =>
+      apiFetch('/integrations', 'GET', null, token),
+
+  get: (integrationId, token) =>
+      apiFetch(`/integrations/${integrationId}`, 'GET', null, token),
+
+  connect: (payload, token) =>
+      apiFetch('/integrations/connect', 'POST', payload, token),
+
+  sync: (integrationId, token) =>
+      apiFetch(`/integrations/${integrationId}/sync`, 'POST', null, token),
+
+  disconnect: (integrationId, token) =>
+      apiFetch(`/integrations/${integrationId}`, 'DELETE', null, token),
 };
 
 // ========== CONCEPT MAP APIs ==========

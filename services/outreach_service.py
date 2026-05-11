@@ -224,6 +224,12 @@ REWRITE:
                     "options": {
                         "temperature": 0.5,
                         "num_predict": 300,   # Hard cap on tokens to prevent verbosity
+                        # Hardcoded CPU-only for outreach. Roleplay / other modules
+                        # use the global LLM_NUM_GPU setting — leave those alone.
+                        # Reason: this machine's CUDA is unstable; outreach needs to
+                        # be reliable (user-visible flow), so we force it to CPU
+                        # here regardless of the global setting.
+                        "num_gpu": 0,
                     }
                 },
                 timeout=(10, 300)

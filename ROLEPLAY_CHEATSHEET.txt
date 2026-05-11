@@ -240,3 +240,235 @@ with LLM judgment 60/40 to give honest category scores. All training data
 is multi-source academic (CaSiNo, GoEmotions, ESConv, DeepMost) with
 out-of-distribution validation against Claude Opus labels. Everything runs
 locally via Ollama for privacy."
+
+
+==============================================================================
+   ROLEPLAY CHAT UI — WHAT EVERY COMPONENT SHOWS
+   (Read top-to-bottom matching the chat screen layout)
+==============================================================================
+
+------------------------ 1. TOP BAR — PERSONA STATUS -----------------------
+
+  "The Budget Hunter" | Online | N messages
+    -> AI customer name, session status, live message counter
+    -> Source: persona_snapshot from DB
+    -> Viva: "every session runs against a configured persona with fixed
+              difficulty, personality_traits, and common_objections"
+
+  [Chat] [Avatar] [Voice]  tabs
+    -> 3 interaction modes — same pipeline, different delivery
+    -> Chat   = text only
+    -> Avatar = 3D avatar + TTS (Web Speech API)
+    -> Voice  = Whisper STT + Edge TTS
+    -> Viva: "core pipeline is media-agnostic"
+
+  [End] button
+    -> POST /roleplay/sessions/{id}/end
+    -> triggers NLP eval auto-run, navigates to feedback page
+
+
+------------------------ 2. STAGE PROGRESS BAR -----------------------------
+
+  0-100% bar + icons: Opening -> Discovery -> Presenting -> Objections -> Closing
+
+    Source:   Analyst Agent (LLM, Llama 3.1 8B)
+    When:     Skip-every-N (beginner=1, intermediate=2, advanced=3)
+    Fallback: NLP heuristic if LLM skipped/fails
+    Viva:     "Analyst reasons about recent messages to detect stage;
+               skip-N prevents the LLM bottleneck from dominating latency"
+
+
+------------------------ 3. THE METRICS ROW — 5 MODELS ---------------------
+
+  Each card shows a live signal. All run in parallel per turn (~200ms total).
+
+   Card           Model                      Label       Value type
+   -------------  -------------------------  ---------   ---------------
+   Deal           DistilBERT C4 (Outcome)    probability 0-100%
+   Momentum       SalesRLAgent (PPO RL)      probability 0-100%
+   State          DistilBERT C5              6 classes   interest/trust/
+                                                         objection/eval/
+                                                         decision/drop_off
+   Willingness    DistilBERT C6              3 classes   engaged/neutral/
+                                                         disengaged
+   Risk           LSTM (2-layer, h=64)       probability 0-100% + trend
+
+  Why "awaiting" / "--%" at 0-2 messages:
+    - LSTM needs sequence to detect trajectory
+    - DistilBERT predictions dampened toward neutral for first 2-4 turns
+      (prevents overclaiming on thin signal)
+
+  Viva line (THE KEY ONE):
+    "Five different models, five different jobs, running in parallel every
+     turn. Deal Confidence is PATTERN-based (30K historical deals).
+     Momentum is DYNAMICS-based (PPO reinforcement learning). State +
+     Willingness detect buyer psychology via domain fine-tuned DistilBERT.
+     Risk is the LSTM reading the full SEQUENCE of turns — catches drift
+     that single-turn models miss. Each is specialized, none redundant."
+
+
+------------------------ 4. SalesRL BADGE + TREND CHART --------------------
+
+  "SalesRL 50% Stable Trend"
+    -> Raw output of SalesRLAgent (same model as Momentum card)
+    -> Legacy naming — both show same number different styles
+    -> Trend: compares current vs 2 turns ago, threshold 0.08
+
+  Chart after 2+ messages:
+    -> Recharts line chart, conversion probability over time
+    -> Shows trajectory visually — useful for "did trainee
+       recover the deal?" narrative during feedback
+
+
+------------------------ 5. COACHING TIPS PANEL ----------------------------
+
+  "Coaching tips will appear here..."
+    -> Source:   Analyst Agent (same LLM that tracks stages)
+    -> Pattern:  periodic — returns a 1-2 sentence actionable nudge
+    -> Purpose:  real-time coach during session (not post-session eval)
+    -> Viva:     "LLM-generated contextual advice based on last 6-10 turns;
+                  example: 'Customer raised a price concern — explore root
+                  cause before responding'"
+
+
+------------------------ 6. CLAIM CHECK INDICATOR --------------------------
+
+  "All claims verified"  /  "Flagged claim"  /  "Unverified claim"
+    -> Source: Knowledge Accuracy Agent (hot path, ~200ms)
+    -> Stack:  regex (hard claim detection) -> RAG vector search ->
+               numeric match + scope check
+    -> Viva:   "Catches false claims in real time — if trainee says
+                '99.9% uptime' but docs say 99.5%, immediate flag"
+
+
+==============================================================================
+   THE EQ METRIC — WHAT IT REPRESENTS (MOST COMMON VIVA QUESTION)
+==============================================================================
+
+  EQ (0-100) = the TRAINEE'S emotional intelligence score this session.
+  Updated per turn. Rolling history kept for trend tracking.
+
+------------------------ THE FORMULA ---------------------------------------
+
+  EQ = 0.30 * Empathy      (from Emotion-RoBERTa, 28-class GoEmotions)
+     + 0.25 * Listening    (from DeBERTa NLI semantic similarity)
+     + 0.25 * (1-Pressure) (from Emotion-RoBERTa pressure head)
+     + 0.20 * LAER         (regex detection of Listen-Acknowledge-
+                            Explore-Respond patterns)
+
+
+------------------------ THE 4 SIGNALS IN PLAIN ENGLISH --------------------
+
+  EMPATHY (30% weight)
+    HIGH: "I completely understand your budget concerns"
+    LOW:  "let me just pitch you harder then"
+
+  ACTIVE LISTENING (25% weight, semantic similarity)
+    HIGH: Customer says "HubSpot was too complex" -> trainee: "our tool
+          is simpler than HubSpot because..." (addresses SPECIFICALLY)
+    LOW:  Customer says "too complex" -> trainee: "what's your budget?"
+          (ignores, pivots)
+
+  PRESSURE (25% weight, INVERTED -> less pressure = higher EQ)
+    HIGH pressure (bad): "you're losing money every day you wait"
+    LOW pressure (good): "when would be a good time to revisit this?"
+
+  LAER (20% weight, Carew International framework)
+    L - Listen:      no interruption, full attention
+    A - Acknowledge: "that's a fair concern"
+    E - Explore:     "can you tell me more about that?"
+    R - Respond:     evidence-based rebuttal
+    Each detected step = +0.25. All 4 steps = LAER score 1.0.
+
+
+------------------------ WLEIS MAPPING (ACADEMIC LINK) ---------------------
+
+  Your EQ maps to the Wong & Law 2002 Emotional Intelligence Scale:
+
+    WLEIS dimension                     Our mapping
+    ---------------------------------   -------------------
+    OEA (Others' Emotion Appraisal)     Empathy signal
+    ROE (Regulation of Emotion)         1 - Pressure
+    UOE (Use of Emotion)                Active Listening
+    SEA (Self-Emotion Appraisal)        Composite EQ score
+
+  Citation: Wong, C.S. & Law, K.S. (2002). Leadership Quarterly, 13(3).
+
+
+------------------------ EQ TRIGGERS ADAPTIVE DIFFICULTY -------------------
+
+  EQ is not just displayed — it FEEDS BACK into the persona's behaviour:
+
+    Trainee low EQ (pushy, dismissive)
+        |
+        v
+    Adaptive Difficulty Agent detects declining trend
+        |
+        v
+    Injects "cooler/ice_cold" directive into Persona LLM prompt
+        |
+        v
+    AI customer becomes MORE resistant the next turn
+
+  And vice versa: high EQ -> customer softens, opens up.
+  Creates a reinforcement loop that rewards empathetic selling.
+
+
+------------------------ ONE-LINER FOR PANEL -------------------------------
+
+  "EQ is Wong and Law 2002 WLEIS-based — four dimensions combined weighted:
+   empathy from Emotion-RoBERTa, active listening from DeBERTa NLI semantic
+   similarity, composure from our fine-tuned pressure classifier, and LAER
+   detection via regex from the Carew International framework. Real-time
+   per-turn scoring that feeds back into the Adaptive Difficulty Agent —
+   if trainee is empathetic, the AI customer warms up; if pushy, it turns
+   cold. Creates a loop that teaches emotional intelligence by doing."
+
+
+==============================================================================
+   THE UI COMPONENT MAP — ASCII VERSION (for quick reference)
+==============================================================================
+
+  +----------------------------------------------------------------+
+  | Persona name | Mode tabs (Chat/Avatar/Voice) | [End]           |
+  +----------------------------------------------------------------+
+  | Progress bar  (0-100%)   <-- Analyst Agent (LLM)               |
+  | Opening  Discovery  Presenting  Objections  Closing            |
+  +--------+--------+--------+-----------+---------------+---------+
+  | Deal   | Moment | State  | Willing   | Risk          |         |
+  | (C4)   |(SalesRL| (C5)   | (C6)      | (LSTM)        |         |
+  +--------+--------+--------+-----------+---------------+---------+
+  | SalesRL badge (50%  Stable  Trend)  <-- same as Momentum       |
+  +----------------------------------------------------------------+
+  | Live trend chart (Recharts)  <-- after 2+ messages             |
+  +----------------------------------------------------------------+
+  | EQ score + trend  <-- EQ Agent (weighted 4-signal composite)   |
+  +----------------------------------------------------------------+
+  | Coaching tips  <-- Analyst Agent (LLM)                         |
+  +----------------------------------------------------------------+
+  | Claim check status  <-- Knowledge Agent (RAG + regex)          |
+  +----------------------------------------------------------------+
+  |                                                                |
+  |  [Chat message thread]                                         |
+  |                                                                |
+  +----------------------------------------------------------------+
+
+
+------------------------ WHAT TO REMEMBER ----------------------------------
+
+  If panel points to ANY UI element and asks "what's this?":
+
+    Progress bar          -> Analyst Agent, LLM-based stage detection
+    Deal card             -> DistilBERT C4, pattern-based conversion model
+    Momentum card         -> SalesRLAgent PPO, dynamics-based
+    State card            -> DistilBERT C5, 6-class buyer state
+    Willingness card      -> DistilBERT C6, 3-class engagement
+    Risk card             -> LSTM sequence model, 2-layer hidden=64
+    SalesRL badge         -> same as Momentum, raw display
+    Trend chart           -> Recharts, shows probability over turns
+    EQ score              -> EQ Agent, WLEIS-weighted composite
+    Coaching tips         -> Analyst Agent LLM
+    Claim check           -> Knowledge Agent, RAG + regex
+    Mode tabs             -> Chat/Avatar/Voice (Web Speech / Whisper)
+
+  Every element is traceable to a specific agent or model. No "magic".

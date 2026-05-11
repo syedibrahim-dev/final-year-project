@@ -38,6 +38,25 @@ class Settings(BaseSettings):
     ENABLE_ANALYST_AGENT: bool = True              # Toggle analyst agent on/off
     ENABLE_COACHING_HINTS: bool = True             # Toggle coaching hints in UI
 
+    # Agentic Post-Session Evaluator (tool-use loop on top of Ollama function calling)
+    # When True, post-session feedback uses AgenticEvaluator instead of PerformanceAgent.
+    # On any failure falls back to PerformanceAgent automatically — safe to toggle.
+    # Off by default because tool-use adds 30-90s latency per evaluation.
+    ENABLE_AGENTIC_EVALUATOR: bool = False
+
+    # Agentic Post-Session Fact-Checker (deep claim audit with RAG + scope checks)
+    # When True, post-session evaluation also runs AgenticFactChecker and appends
+    # a `fact_check_report` to the evaluation response. Additive — on failure the
+    # report is simply omitted; existing per-turn accuracy_data is unchanged.
+    # Off by default because tool-use adds 30-60s extra latency per evaluation.
+    ENABLE_AGENTIC_FACT_CHECK: bool = False
+
+    # Scheduled Inventory Forecast Refresh (APScheduler)
+    # WARNING: on large catalogs (e.g. 4,000+ products from Online Retail II)
+    # each refresh cycle can take hours. Default off — trigger manually via
+    # POST /inventory/refresh-all-forecasts when needed.
+    ENABLE_SCHEDULED_FORECAST_REFRESH: bool = False
+
     # SalesRLAgent Conversion Predictor (deepmost)
     ENABLE_SALESRL_AGENT: bool = True              # Toggle real-time conversion prediction
     SALESRL_LLM_MODEL: str = "llama3.1:8b-instruct-q8_0"  # Same model as roleplay — no GPU swap needed
@@ -77,7 +96,14 @@ class Settings(BaseSettings):
     PUBLIC_BASE_URL: str | None = None            # e.g. https://yourdomain.com — for image URLs in webhook payloads
 
     class Config:
-        env_file = ".env"          # ✅ Automatically loads from .env
+        # Resolve .env as an absolute path relative to the PROJECT ROOT,
+        # not the process's current working directory. This fixes the
+        # "SMTP credentials not configured" bug where uvicorn started
+        # from a different directory couldn't find the file.
+        env_file = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            ".env",
+        )
         case_sensitive = True
 
 settings = Settings()
